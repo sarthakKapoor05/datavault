@@ -102,8 +102,9 @@ class _EnterPinPageState extends State<EnterPinPage> {
   void _onKeyPressed(String key) {
     setState(() {
       if (key == 'back') {
-        if (enteredPin.isNotEmpty)
+        if (enteredPin.isNotEmpty) {
           enteredPin = enteredPin.substring(0, enteredPin.length - 1);
+        }
       } else {
         if (enteredPin.length < 4) enteredPin += key;
       }

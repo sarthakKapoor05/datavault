@@ -1,7 +1,10 @@
 import 'package:datavault/Scrrens/folders.dart';
+import 'package:datavault/Scrrens/received_files_screen.dart';
 import 'package:flutter/material.dart';
 
 class Dashboard extends StatelessWidget {
+  const Dashboard({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -204,7 +207,16 @@ class _FileManagerPageState extends State<FileManagerPage> {
     return ListTile(
       leading: Icon(source['icon'], color: source['color'], size: 32),
       title: Text(source['title'], style: TextStyle(color: Colors.white)),
-      onTap: () {},
+      onTap: () {
+        if (source['title'] == 'Received Files') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const ReceivedFilesScreen(),
+            ),
+          );
+        }
+      },
       contentPadding: EdgeInsets.symmetric(vertical: 4),
     );
   }
