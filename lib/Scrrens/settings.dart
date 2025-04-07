@@ -17,7 +17,7 @@ class Settings extends StatelessWidget {
         ),
         backgroundColor: Colors.blueGrey[600],
       ),
-      backgroundColor: Colors.white,
+      backgroundColor: const Color.fromARGB(255, 0, 0, 0),
     );
   }
 }

@@ -43,7 +43,7 @@ class _HomeState extends State<Home> {
           height: 60,
           color: Colors.blueGrey,
           buttonBackgroundColor: Colors.blueGrey[600],
-          backgroundColor: Colors.white,
+          backgroundColor: const Color.fromARGB(255, 0, 0, 0),
           items: items,
 
           animationCurve: Curves.easeInOut,

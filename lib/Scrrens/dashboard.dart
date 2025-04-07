@@ -55,7 +55,14 @@ class _FileManagerPageState extends State<FileManagerPage> {
   ];
 
   final List<Map<String, dynamic>> sources = [
+    {
+      'title': 'Received Files',
+      'icon': Icons.file_present,
+      'color': Colors.blue,
+    },
+
     {'title': 'Downloads', 'icon': Icons.download, 'color': Colors.blue},
+
     // {'title': 'Bluetooth', 'icon': Icons.bluetooth, 'color': Colors.blueAccent},
   ];
 
