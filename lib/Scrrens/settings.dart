@@ -8,7 +8,7 @@ class Settings extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          "Setting Screen",
+          "Setting Screen make your chanegs here",
           style: TextStyle(
             fontSize: 25,
             fontWeight: FontWeight.bold,
