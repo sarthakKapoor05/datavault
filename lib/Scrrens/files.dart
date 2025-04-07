@@ -42,7 +42,7 @@ class Files extends StatelessWidget {
       backgroundColor: const Color.fromARGB(255, 255, 255, 255),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 0),
           child: ListView(
             children: [
               GestureDetector(
@@ -58,7 +58,7 @@ class Files extends StatelessWidget {
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.grey[900],
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(0),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

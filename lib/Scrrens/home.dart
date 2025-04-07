@@ -12,7 +12,7 @@ class Home extends StatefulWidget {
 }
 
 class _HomeState extends State<Home> {
-  int index = 1;
+  int index = 0;
   final screen = [Files(), Share(), Settings()];
 
   @override
