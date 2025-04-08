@@ -100,7 +100,7 @@ class EnterPinPage extends StatefulWidget {
 class _EnterPinPageState extends State<EnterPinPage> {
   String enteredPin = "";
   final LocalAuthentication auth = LocalAuthentication();
-  bool _isAuthenticating = false;
+  // bool _isAuthenticating = false;
 
   @override
   void initState() {
