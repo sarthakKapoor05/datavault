@@ -1,16 +1,14 @@
+import 'package:datavault/Scrrens/downloads_screen.dart';
+import 'package:flutter/material.dart';
 import 'package:datavault/Scrrens/folders.dart';
 import 'package:datavault/Scrrens/received_files_screen.dart';
-import 'package:flutter/material.dart';
 
 class Dashboard extends StatelessWidget {
   const Dashboard({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: FileManagerPage(),
-    );
+    return FileManagerPage();
   }
 }
 
@@ -63,10 +61,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       'icon': Icons.file_present,
       'color': Colors.blue,
     },
-
     {'title': 'Downloads', 'icon': Icons.download, 'color': Colors.blue},
-
-    // {'title': 'Bluetooth', 'icon': Icons.bluetooth, 'color': Colors.blueAccent},
   ];
 
   @override
@@ -74,12 +69,12 @@ class _FileManagerPageState extends State<FileManagerPage> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: Text(
+        title: const Text(
           'Files',
           style: TextStyle(
+            color: Colors.white,
             fontSize: 24,
             fontWeight: FontWeight.bold,
-            color: Colors.white,
           ),
         ),
         backgroundColor: Colors.black,
@@ -87,21 +82,20 @@ class _FileManagerPageState extends State<FileManagerPage> {
       ),
       body: SafeArea(
         child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           child: ListView(
             children: [
-              // ✅ Wrapped in GestureDetector to navigate
               GestureDetector(
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => FolderListScreen(),
-                    ), // ✅ Navigation Added
+                      builder: (context) => const FolderListScreen(),
+                    ),
                   );
                 },
                 child: Container(
-                  padding: EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.grey[900],
                     borderRadius: BorderRadius.circular(12),
@@ -109,17 +103,17 @@ class _FileManagerPageState extends State<FileManagerPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      const Text(
                         'Device storage',
                         style: TextStyle(color: Colors.white70),
                       ),
-                      SizedBox(height: 10),
+                      const SizedBox(height: 10),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
                             '${usedStorage.toStringAsFixed(1)} GB / ${totalStorage.toStringAsFixed(1)} GB',
-                            style: TextStyle(
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -127,7 +121,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                           ),
                         ],
                       ),
-                      SizedBox(height: 8),
+                      const SizedBox(height: 8),
                       LinearProgressIndicator(
                         value: usedStorage / totalStorage,
                         backgroundColor: Colors.grey[700],
@@ -139,23 +133,19 @@ class _FileManagerPageState extends State<FileManagerPage> {
                   ),
                 ),
               ),
-
-              SizedBox(height: 20),
-
-              // File Categories
+              const SizedBox(height: 20),
               Wrap(
                 spacing: 12,
                 runSpacing: 12,
                 children:
-                    categories.map((category) {
-                      return _buildCategoryCard(context, category);
-                    }).toList(),
+                    categories
+                        .map(
+                          (category) => _buildCategoryCard(context, category),
+                        )
+                        .toList(),
               ),
-
-              SizedBox(height: 20),
-
-              // Sources Section
-              Text(
+              const SizedBox(height: 20),
+              const Text(
                 'Sources',
                 style: TextStyle(
                   color: Colors.white,
@@ -163,12 +153,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              SizedBox(height: 10),
+              const SizedBox(height: 10),
               Column(
                 children:
-                    sources.map((source) {
-                      return _buildSourceTile(source);
-                    }).toList(),
+                    sources.map((source) => _buildSourceTile(source)).toList(),
               ),
             ],
           ),
@@ -183,7 +171,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
   ) {
     return Container(
       width: (MediaQuery.of(context).size.width / 2) - 24,
-      padding: EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.grey[900],
         borderRadius: BorderRadius.circular(12),
@@ -191,12 +179,12 @@ class _FileManagerPageState extends State<FileManagerPage> {
       child: Column(
         children: [
           Icon(category['icon'], color: category['color'], size: 32),
-          SizedBox(height: 8),
-          Text(category['title'], style: TextStyle(color: Colors.white)),
-          SizedBox(height: 4),
+          const SizedBox(height: 8),
+          Text(category['title'], style: const TextStyle(color: Colors.white)),
+          const SizedBox(height: 4),
           Text(
             category['count'].toString(),
-            style: TextStyle(color: Colors.grey),
+            style: const TextStyle(color: Colors.grey),
           ),
         ],
       ),
@@ -206,7 +194,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
   Widget _buildSourceTile(Map<String, dynamic> source) {
     return ListTile(
       leading: Icon(source['icon'], color: source['color'], size: 32),
-      title: Text(source['title'], style: TextStyle(color: Colors.white)),
+      title: Text(source['title'], style: const TextStyle(color: Colors.white)),
       onTap: () {
         if (source['title'] == 'Received Files') {
           Navigator.push(
@@ -215,9 +203,14 @@ class _FileManagerPageState extends State<FileManagerPage> {
               builder: (context) => const ReceivedFilesScreen(),
             ),
           );
+        } else if (source['title'] == 'Downloads') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const DownloadsScreen()),
+          );
         }
       },
-      contentPadding: EdgeInsets.symmetric(vertical: 4),
+      contentPadding: const EdgeInsets.symmetric(vertical: 4),
     );
   }
 }

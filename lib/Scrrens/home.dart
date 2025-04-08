@@ -1,6 +1,5 @@
 import 'package:curved_navigation_bar/curved_navigation_bar.dart';
 import 'package:datavault/Scrrens/dashboard.dart';
-// import 'package:datavault/Scrrens/files.dart';
 import 'package:datavault/Scrrens/settings.dart';
 import 'package:datavault/Scrrens/share.dart';
 import 'package:flutter/material.dart';
@@ -14,7 +13,9 @@ class Home extends StatefulWidget {
 
 class _HomeState extends State<Home> {
   int index = 0;
-  final screen = [Dashboard(), Share(), Settings()];
+
+  // ✅ Screens for navigation
+  final screens = [Dashboard(), Share(), Settings()];
 
   @override
   Widget build(BuildContext context) {
@@ -26,18 +27,11 @@ class _HomeState extends State<Home> {
 
     return Scaffold(
       backgroundColor: const Color.fromARGB(255, 0, 0, 0),
-      // appBar: AppBar(
-      //   title: Text('Data Vault'),
-      //   backgroundColor: Colors.blueGrey[600],
-      //   foregroundColor: Colors.white,
-      // ),
-      body: screen[index],
+      body: index < screens.length ? screens[index] : screens[0],
       bottomNavigationBar: Theme(
-        data: Theme.of(context).copyWith(
-          iconTheme: IconThemeData(
-            color: const Color.fromARGB(255, 255, 255, 255),
-          ),
-        ),
+        data: Theme.of(
+          context,
+        ).copyWith(iconTheme: IconThemeData(color: Colors.white)),
         child: CurvedNavigationBar(
           index: index,
           height: 60,
@@ -45,7 +39,6 @@ class _HomeState extends State<Home> {
           buttonBackgroundColor: Colors.blueGrey[600],
           backgroundColor: const Color.fromARGB(255, 0, 0, 0),
           items: items,
-
           animationCurve: Curves.easeInOut,
           animationDuration: Duration(milliseconds: 300),
           onTap: (selectedIcon) {
