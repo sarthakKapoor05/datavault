@@ -1,4 +1,10 @@
+import 'package:datavault/Scrrens/apks_screen.dart';
+import 'package:datavault/Scrrens/archives_screen.dart';
+import 'package:datavault/Scrrens/audio_screen.dart';
+import 'package:datavault/Scrrens/documents_screen.dart';
 import 'package:datavault/Scrrens/downloads_screen.dart';
+import 'package:datavault/Scrrens/photos_screen_dart';
+import 'package:datavault/Scrrens/videos_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:datavault/Scrrens/folders.dart';
 import 'package:datavault/Scrrens/received_files_screen.dart';
@@ -201,24 +207,62 @@ class _FileManagerPageState extends State<FileManagerPage> {
     BuildContext context,
     Map<String, dynamic> category,
   ) {
-    return Container(
-      width: (MediaQuery.of(context).size.width / 3) - 20,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.grey[900],
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
-          Icon(category['icon'], color: category['color'], size: 26),
-          const SizedBox(height: 8),
-          Text(category['title'], style: const TextStyle(color: Colors.white)),
-          const SizedBox(height: 4),
-          Text(
-            category['count'].toString(),
-            style: const TextStyle(color: Colors.grey),
-          ),
-        ],
+    return GestureDetector(
+      onTap: () {
+        if (category['title'] == 'Photos') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const PhotosScreen()),
+          );
+        } else if (category['title'] == 'Videos') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const VideosScreen()),
+          );
+        } else if (category['title'] == 'Audio') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const AudioScreen()),
+          );
+        } else if (category['title'] == 'Documents') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const DocumentsScreen()),
+          );
+        } else if (category['title'] == 'APKs') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const ApksScreen()),
+          );
+        } else if (category['title'] == 'Archives') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const ArchivesScreen()),
+          );
+        }
+      },
+      child: Container(
+        width: (MediaQuery.of(context).size.width / 3) - 20,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.grey[900],
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            Icon(category['icon'], color: category['color'], size: 26),
+            const SizedBox(height: 8),
+            Text(
+              category['title'],
+              style: const TextStyle(color: Colors.white),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              category['count'].toString(),
+              style: const TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
       ),
     );
   }
