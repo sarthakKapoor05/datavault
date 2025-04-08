@@ -1,7 +1,7 @@
 import 'package:curved_navigation_bar/curved_navigation_bar.dart';
 import 'package:datavault/Scrrens/dashboard.dart';
 import 'package:datavault/Scrrens/settings.dart';
-import 'package:datavault/Scrrens/share.dart';
+import 'package:datavault/Scrrens/Nearby_Devices_screen.dart';
 import 'package:flutter/material.dart';
 
 class Home extends StatefulWidget {
@@ -15,7 +15,7 @@ class _HomeState extends State<Home> {
   int index = 0;
 
   // ✅ Screens for navigation
-  final screens = [Dashboard(), Share(), Settings()];
+  final screens = [Dashboard(), ShareScreen(), Settings()];
 
   @override
   Widget build(BuildContext context) {
