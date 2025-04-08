@@ -1,14 +1,35 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 
-class ShareScreen extends StatelessWidget {
+class ShareScreen extends StatefulWidget {
+  @override
+  _ShareScreenState createState() => _ShareScreenState();
+}
+
+class _ShareScreenState extends State<ShareScreen>
+    with SingleTickerProviderStateMixin {
   final List<Map<String, String>> recentDevices = [
     {'name': 'Brandy', 'id': 'CP#25656835'},
     {'name': 'James', 'id': 'CP#25656835'},
-    {'name': 'Anderson', 'id': 'CP#25656825'},
-    {'name': 'Sarthak', 'id': 'CP#25656135'},
-    {'name': 'xyz', 'id': 'CP#25656815'},
-    {'name': 'Iron man', 'id': 'CP#25616835'},
+    {'name': 'Anderson', 'id': 'CP#25656835'},
   ];
+
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 5),
+      vsync: this,
+    )..repeat(); // Continuous waving
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,16 +56,27 @@ class ShareScreen extends StatelessWidget {
                 children: [
                   ...List.generate(4, (index) {
                     double radius = (index + 1) * 50;
-                    return Container(
-                      width: radius * 2,
-                      height: radius * 2,
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.2),
-                          width: 1.5,
-                        ),
-                        shape: BoxShape.circle,
-                      ),
+                    return AnimatedBuilder(
+                      animation: _controller,
+                      builder: (context, child) {
+                        double scale =
+                            1.0 +
+                            sin((_controller.value * 2 * pi) + index) * 0.05;
+                        return Transform.scale(
+                          scale: scale,
+                          child: Container(
+                            width: radius * 2,
+                            height: radius * 2,
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.2),
+                                width: 1.5,
+                              ),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        );
+                      },
                     );
                   }),
                   Container(
@@ -123,7 +155,10 @@ class ShareScreen extends StatelessWidget {
               backgroundColor: Color(0xFF50C2C9),
               padding: EdgeInsets.symmetric(horizontal: 20),
             ),
-            child: const Text('Connect', style: TextStyle(color: Colors.white)),
+            child: const Text(
+              'Connect',
+              style: TextStyle(color: Color.fromARGB(255, 255, 255, 255)),
+            ),
           ),
         ],
       ),

@@ -3,7 +3,7 @@ import 'package:datavault/Scrrens/archives_screen.dart';
 import 'package:datavault/Scrrens/audio_screen.dart';
 import 'package:datavault/Scrrens/documents_screen.dart';
 import 'package:datavault/Scrrens/downloads_screen.dart';
-import 'package:datavault/Scrrens/photos_screen_dart';
+import 'package:datavault/Scrrens/photos_screen.dart';
 import 'package:datavault/Scrrens/videos_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:datavault/Scrrens/folders.dart';

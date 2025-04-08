@@ -11,6 +11,7 @@ class DownloadsScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Downloads', style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: const Center(
         child: Text(

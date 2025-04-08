@@ -1,6 +1,7 @@
 import 'package:datavault/Scrrens/home.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:local_auth/local_auth.dart';
 
 class PinCheckPage extends StatefulWidget {
   @override
@@ -98,6 +99,36 @@ class EnterPinPage extends StatefulWidget {
 
 class _EnterPinPageState extends State<EnterPinPage> {
   String enteredPin = "";
+  final LocalAuthentication auth = LocalAuthentication();
+  bool _isAuthenticating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _authenticate(); // Call biometric on start (optional)
+  }
+
+  Future<void> _authenticate() async {
+    bool authenticated = false;
+    try {
+      authenticated = await auth.authenticate(
+        localizedReason: 'Use fingerprint to unlock',
+        options: const AuthenticationOptions(
+          biometricOnly: true,
+          stickyAuth: true,
+        ),
+      );
+    } catch (e) {
+      print("Biometric auth error: $e");
+    }
+
+    if (authenticated) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => Home()),
+      );
+    }
+  }
 
   void _onKeyPressed(String key) {
     setState(() {
@@ -185,6 +216,17 @@ class _EnterPinPageState extends State<EnterPinPage> {
         children: [
           PinCircles(pinLength: enteredPin.length),
           Keypad(onKeyPressed: _onKeyPressed),
+
+          // 👇 Add this IconButton here
+          IconButton(
+            icon: Icon(
+              Icons.fingerprint,
+              size: 40,
+              color: Colors.blueGrey[600],
+            ),
+            onPressed: _authenticate,
+          ),
+
           _buildForgotPin(),
         ],
       ),
