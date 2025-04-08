@@ -85,6 +85,38 @@ class _FileManagerPageState extends State<FileManagerPage> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: ListView(
             children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.grey[900],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.search, color: Colors.white70),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        readOnly: true,
+                        style: const TextStyle(color: Colors.white),
+                        cursorColor: Colors.white70,
+                        decoration: const InputDecoration(
+                          hintText: 'Search files, folders...',
+                          hintStyle: TextStyle(color: Colors.white70),
+                          border: InputBorder.none,
+                        ),
+                        onChanged: (value) {
+                          // 🔍 You can implement real-time filtering here if needed
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
               GestureDetector(
                 onTap: () {
                   Navigator.push(
@@ -135,7 +167,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
               ),
               const SizedBox(height: 20),
               Wrap(
-                spacing: 12,
+                spacing: 8,
                 runSpacing: 12,
                 children:
                     categories
@@ -170,15 +202,15 @@ class _FileManagerPageState extends State<FileManagerPage> {
     Map<String, dynamic> category,
   ) {
     return Container(
-      width: (MediaQuery.of(context).size.width / 2) - 24,
-      padding: const EdgeInsets.all(16),
+      width: (MediaQuery.of(context).size.width / 3) - 20,
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.grey[900],
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         children: [
-          Icon(category['icon'], color: category['color'], size: 32),
+          Icon(category['icon'], color: category['color'], size: 26),
           const SizedBox(height: 8),
           Text(category['title'], style: const TextStyle(color: Colors.white)),
           const SizedBox(height: 4),
