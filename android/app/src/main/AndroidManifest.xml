@@ -5,7 +5,7 @@
     <uses-feature android:name="android.hardware.fingerprint" android:required="false" />
 
     <application
-        android:label="datavault"
+        android:label="DataVault"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
