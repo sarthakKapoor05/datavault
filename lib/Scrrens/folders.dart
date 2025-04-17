@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class FolderListScreen extends StatelessWidget {
-  const FolderListScreen({Key? key}) : super(key: key);
+  const FolderListScreen({super.key});
 
   // Example folder metadata
   final List<Map<String, String>> folders = const [
