@@ -11,13 +11,13 @@ void main() async {
 
 class MyApp extends StatelessWidget {
   final String? savedPin;
-   MyApp({required this.savedPin});
+   const MyApp({super.key, required this.savedPin});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: savedPin == null ? SetPinPage() : PinCheckPage(),
+      home: savedPin == null ? SetPinPage() : PinCheckPage()
     );
   }
 }

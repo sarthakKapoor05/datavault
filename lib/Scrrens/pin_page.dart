@@ -1,9 +1,15 @@
 import 'package:datavault/Scrrens/home.dart';
+import 'package:datavault/Scrrens/send_message.dart';
 import 'package:flutter/material.dart';
+import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:local_auth/local_auth.dart';
 
+final logger = Logger();
+
 class PinCheckPage extends StatefulWidget {
+  const PinCheckPage({super.key});
+
   @override
   _PinCheckPageState createState() => _PinCheckPageState();
 }
@@ -31,17 +37,20 @@ class _PinCheckPageState extends State<PinCheckPage> {
 }
 
 class SetPinPage extends StatefulWidget {
+  const SetPinPage({super.key});
+
   @override
-  _SetPinPageState createState() => _SetPinPageState();
+  SetPinPageState createState() => SetPinPageState();
 }
 
-class _SetPinPageState extends State<SetPinPage> {
+class SetPinPageState extends State<SetPinPage> {
   String currentPin = "";
 
   Future<void> _savePin() async {
     if (currentPin.length == 4) {
       SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setString('userPin', currentPin);
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('PIN Set Successfully!')));
@@ -61,8 +70,9 @@ class _SetPinPageState extends State<SetPinPage> {
   void _onKeyPressed(String key) {
     setState(() {
       if (key == 'back') {
-        if (currentPin.isNotEmpty)
+        if (currentPin.isNotEmpty) {
           currentPin = currentPin.substring(0, currentPin.length - 1);
+        }
       } else {
         if (currentPin.length < 4) currentPin += key;
       }
@@ -91,13 +101,13 @@ class _SetPinPageState extends State<SetPinPage> {
 
 class EnterPinPage extends StatefulWidget {
   final String savedPin;
-  EnterPinPage({required this.savedPin});
+  const EnterPinPage({super.key, required this.savedPin});
 
   @override
-  _EnterPinPageState createState() => _EnterPinPageState();
+  EnterPinPageState createState() => EnterPinPageState();
 }
 
-class _EnterPinPageState extends State<EnterPinPage> {
+class EnterPinPageState extends State<EnterPinPage> {
   String enteredPin = "";
   final LocalAuthentication auth = LocalAuthentication();
   // bool _isAuthenticating = false;
@@ -119,13 +129,13 @@ class _EnterPinPageState extends State<EnterPinPage> {
         ),
       );
     } catch (e) {
-      print("Biometric auth error: $e");
+      logger.e("Biometric auth error", error: e); // ✅ Logging instead of print
     }
-
+    if (!mounted) return;
     if (authenticated) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => Home()),
+        MaterialPageRoute(builder: (context) => SendMessagePage()),
       );
     }
   }
@@ -236,7 +246,7 @@ class _EnterPinPageState extends State<EnterPinPage> {
 
 class PinCircles extends StatelessWidget {
   final int pinLength;
-  PinCircles({required this.pinLength});
+  const PinCircles({super.key, required this.pinLength});
 
   @override
   Widget build(BuildContext context) {
@@ -263,7 +273,7 @@ class PinCircles extends StatelessWidget {
 
 class Keypad extends StatelessWidget {
   final Function(String) onKeyPressed;
-  Keypad({required this.onKeyPressed});
+  const Keypad({super.key, required this.onKeyPressed});
 
   Widget _buildKeypadButton(String text) {
     return InkWell(
