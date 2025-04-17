@@ -1,4 +1,5 @@
 {
     "java.configuration.updateBuildConfiguration": "interactive",
-    "cmake.sourceDirectory": "C:/Users/Asus/Documents/Flutter Project/datavault/windows"
+    "cmake.sourceDirectory": "C:/Users/Asus/Documents/Flutter Project/datavault/windows",
+    "C_Cpp.errorSquiggles": "enabled"
 }
