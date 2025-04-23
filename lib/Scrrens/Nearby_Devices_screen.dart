@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:multicast_dns/multicast_dns.dart';
 
 class ShareScreen extends StatefulWidget {
   @override
@@ -8,6 +9,39 @@ class ShareScreen extends StatefulWidget {
 
 class _ShareScreenState extends State<ShareScreen>
     with SingleTickerProviderStateMixin {
+  static const String name = '_dartobservatory._tcp.local';
+  final MDnsClient client = MDnsClient();
+  // Start the client with default options.
+
+  void startScanning() async {
+    await client.start();
+    // Start scanning for services
+    await for (final PtrResourceRecord ptr in client.lookup<PtrResourceRecord>(
+      ResourceRecordQuery.serverPointer(name),
+    )) {
+      // Use the domainName from the PTR record to get the SRV record,
+      // which will have the port and local hostname.
+      // Note that duplicate messages may come through, especially if any
+      // other mDNS queries are running elsewhere on the machine.
+      await for (final SrvResourceRecord srv in client
+          .lookup<SrvResourceRecord>(
+            ResourceRecordQuery.service(ptr.domainName),
+          )) {
+        // Domain name will be something like "io.flutter.example@some-iphone.local._dartobservatory._tcp.local"
+        final String bundleId =
+            ptr.domainName; //.substring(0, ptr.domainName.indexOf('@'));
+        print(
+          'Dart observatory instance found at '
+          '${srv.target}:${srv.port} for "$bundleId".',
+        );
+      }
+    }
+  }
+
+  // void stopScanning = () async {
+  //   await client.stop();
+  // }
+
   final List<Map<String, String>> recentDevices = [
     {'name': 'Brandy', 'id': 'CP#25656835'},
     {'name': 'James', 'id': 'CP#25656835'},
@@ -79,14 +113,19 @@ class _ShareScreenState extends State<ShareScreen>
                       },
                     );
                   }),
-                  Container(
-                    width: 60,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      color: Color(0xFF50C2C9),
-                      shape: BoxShape.circle,
+                  GestureDetector(
+                    onTap: () {
+                      startScanning();
+                    },
+                    child: Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        color: Color(0xFF50C2C9),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.sync, color: Colors.white, size: 30),
                     ),
-                    child: Icon(Icons.sync, color: Colors.white, size: 30),
                   ),
                 ],
               ),
