@@ -1,3 +1,4 @@
+import 'package:datavault/Scrrens/Stoarge.dart';
 import 'package:datavault/Scrrens/home.dart';
 import 'package:datavault/Scrrens/send_message.dart';
 import 'package:flutter/material.dart';
@@ -135,7 +136,7 @@ class EnterPinPageState extends State<EnterPinPage> {
     if (authenticated) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => SendMessagePage()),
+        MaterialPageRoute(builder: (context) => Home()),
       );
     }
   }

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:datavault/Scrrens/Folders/apks_screen.dart';
 import 'package:datavault/Scrrens/Folders/archives_screen.dart';
 import 'package:datavault/Scrrens/Folders/audio_screen.dart';
@@ -5,9 +7,12 @@ import 'package:datavault/Scrrens/Folders/documents_screen.dart';
 import 'package:datavault/Scrrens/downloads_screen.dart';
 import 'package:datavault/Scrrens/Folders/photos_screen.dart';
 import 'package:datavault/Scrrens/Folders/videos_screen.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:datavault/Scrrens/folders.dart';
 import 'package:datavault/Scrrens/received_files_screen.dart';
+import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
 
 class Dashboard extends StatelessWidget {
   const Dashboard({super.key});
@@ -202,6 +207,64 @@ class _FileManagerPageState extends State<FileManagerPage> {
           ),
         ),
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          try {
+            // Show a dialog to let the user choose between selecting files or a folder
+            final action = await showDialog<String>(
+              context: context,
+              builder:
+                  (context) => AlertDialog(
+                    title: const Text('Select Option'),
+                    content: const Text(
+                      'Do you want to select files or a folder?',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, 'files'),
+                        child: const Text('Files'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, 'folder'),
+                        child: const Text('Folder'),
+                      ),
+                    ],
+                  ),
+            );
+
+            if (action == 'files') {
+              // Allow the user to select multiple files
+              final result = await FilePicker.platform.pickFiles(
+                allowMultiple: true,
+              );
+              if (result == null) return; // User canceled the picker
+
+              for (var file in result.files) {
+                debugPrint('Selected file: ${file.name}');
+                openFile(file);
+              }
+            } else if (action == 'folder') {
+              // Allow the user to select a folder
+              final directoryPath =
+                  await FilePicker.platform.getDirectoryPath();
+              if (directoryPath == null) return; // User canceled the picker
+
+              debugPrint('Selected folder: $directoryPath');
+
+              // List the files in the selected folder
+              final directory = Directory(directoryPath);
+              final files = directory.listSync(); // List all files and folders
+              for (var file in files) {
+                debugPrint('File: ${file.path}');
+              }
+            }
+          } catch (e) {
+            debugPrint('Error selecting files or folder: $e');
+          }
+        },
+        backgroundColor: Colors.blueGrey[600],
+        child: const Icon(Icons.folder, color: Colors.white),
+      ),
     );
   }
 
@@ -290,5 +353,16 @@ class _FileManagerPageState extends State<FileManagerPage> {
       },
       contentPadding: const EdgeInsets.symmetric(vertical: 4),
     );
+  }
+
+  Future<Future<File>> saveFilesPermanently(PlatformFile file) async {
+    final appStorage = await getApplicationDocumentsDirectory();
+    final newFile = File('${appStorage.path}/${file.name}');
+
+    return File(file.path!).copy(newFile.path);
+  }
+
+  void openFile(PlatformFile file) {
+    OpenFile.open(file.path);
   }
 }
