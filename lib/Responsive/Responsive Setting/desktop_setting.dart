@@ -12,6 +12,8 @@ class DesktopSetting extends StatefulWidget {
 class _DesktopSettingState extends State<DesktopSetting> {
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -21,27 +23,24 @@ class _DesktopSettingState extends State<DesktopSetting> {
         backgroundColor: Theme.of(context).colorScheme.primary,
       ),
       backgroundColor: Theme.of(context).colorScheme.background,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            GestureDetector(
-              onTap: () {
-                Provider.of<ThemeProvider>(
-                  context,
-                  listen: false,
-                ).toggleTheme(); // Toggle the theme when text is tapped
-              },
-              child: Text(
-                'Settings',
-                style: TextStyle(
-                  fontSize: 24,
-                  color: Theme.of(context).colorScheme.secondary,
-                ),
-              ),
+      body: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          ListTile(
+            leading: Icon(
+              Icons.brightness_6,
+              color: Theme.of(context).colorScheme.secondary,
             ),
-          ],
-        ),
+            title: const Text('Dark Mode'),
+            trailing: Switch(
+              value: themeProvider.isDarkMode,
+              onChanged: (value) {
+                themeProvider.toggleTheme();
+              },
+              activeColor: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+        ],
       ),
     );
   }

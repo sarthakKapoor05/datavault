@@ -33,11 +33,11 @@ class _MobileSettingsState extends State<MobileSettings> {
             ),
             title: const Text('Dark Mode'),
             trailing: Switch(
-              value: themeProvider.themeData == ThemeData.dark(),
+              value: themeProvider.isDarkMode,
               onChanged: (value) {
                 themeProvider.toggleTheme();
               },
-              activeColor: Theme.of(context).colorScheme.primary,
+              activeColor: Theme.of(context).colorScheme.secondary,
             ),
           ),
         ],

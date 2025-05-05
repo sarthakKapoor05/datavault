@@ -6,6 +6,8 @@ class ThemeProvider with ChangeNotifier {
 
   ThemeData get themeData => _themeData;
 
+  bool get isDarkMode => themeData.brightness == Brightness.dark;
+
   set themeData(ThemeData themedata) {
     _themeData = themedata;
     notifyListeners();
