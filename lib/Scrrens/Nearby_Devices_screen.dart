@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:multicast_dns/multicast_dns.dart';
-import 'package:zeroconnect/zeroconnect.dart';
 
 class ShareScreen extends StatefulWidget {
   @override
@@ -60,13 +59,6 @@ class _ShareScreenState extends State<ShareScreen>
     //   }
     // }
     // client.stop();
-
-    var messageSock = await ZeroConnect().connectToFirst(
-      serviceId: "YOURSERVICEID",
-    );
-    await messageSock?.sendString("Hello from client");
-    var str = await messageSock?.recvBytes();
-    print(str);
 
     // print('Done.');
   }
