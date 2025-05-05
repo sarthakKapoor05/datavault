@@ -1,5 +1,4 @@
 import 'dart:io';
-
 import 'package:datavault/Scrrens/Folders/apks_screen.dart';
 import 'package:datavault/Scrrens/Folders/archives_screen.dart';
 import 'package:datavault/Scrrens/Folders/audio_screen.dart';
@@ -14,9 +13,8 @@ import 'package:datavault/Scrrens/received_files_screen.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 
-class Dashboard extends StatelessWidget {
-  const Dashboard({super.key});
-
+class TabletDashboard extends StatelessWidget {
+  const TabletDashboard({super.key});
   @override
   Widget build(BuildContext context) {
     return FileManagerPage();
@@ -31,6 +29,7 @@ class FileManagerPage extends StatefulWidget {
 }
 
 class _FileManagerPageState extends State<FileManagerPage> {
+  bool isTextFieldEditable = false;
   final double usedStorage = 28;
   final double totalStorage = 128.0;
 
@@ -80,17 +79,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).colorScheme.background,
       appBar: AppBar(
-        title: const Text(
-          'Files',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
+        title: Text(
+          'Mobile Files',
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.black,
+        backgroundColor: Theme.of(context).colorScheme.background,
         elevation: 0,
       ),
       body: SafeArea(
@@ -98,37 +93,58 @@ class _FileManagerPageState extends State<FileManagerPage> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: ListView(
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.grey[900],
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.search, color: Colors.white70),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                        readOnly: true,
-                        style: const TextStyle(color: Colors.white),
-                        cursorColor: Colors.white70,
-                        decoration: const InputDecoration(
-                          hintText: 'Search files, folders...',
-                          hintStyle: TextStyle(color: Colors.white70),
-                          border: InputBorder.none,
-                        ),
-                        onChanged: (value) {
-                          // 🔍 You can implement real-time filtering here if needed
-                        },
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    isTextFieldEditable = true; // Enable editing on tap
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.search,
+                        color: Theme.of(context).colorScheme.secondary,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          readOnly: !isTextFieldEditable,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.secondary,
+                          ),
+                          cursorColor: Theme.of(context).colorScheme.secondary,
+                          decoration: InputDecoration(
+                            hintText: 'Search files, folders...',
+                            hintStyle: TextStyle(
+                              color: Theme.of(context).colorScheme.secondary,
+                            ),
+                            border: InputBorder.none,
+                          ),
+                          onChanged: (value) {
+                            // 🔍 You can implement real-time filtering here if needed
+                          },
+                          onTap: () {
+                            setState(() {
+                              isTextFieldEditable =
+                                  true; // Enable editing on tap
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
+
               const SizedBox(height: 20),
               GestureDetector(
                 onTap: () {
@@ -142,16 +158,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.grey[900],
+                    color: Theme.of(context).colorScheme.primary,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Device storage',
-                        style: TextStyle(color: Colors.white70),
-                      ),
+                      const Text('Device storage', style: TextStyle()),
                       const SizedBox(height: 10),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -159,7 +172,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
                           Text(
                             '${usedStorage.toStringAsFixed(1)} GB / ${totalStorage.toStringAsFixed(1)} GB',
                             style: const TextStyle(
-                              color: Colors.white,
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                             ),
@@ -179,24 +191,25 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 ),
               ),
               const SizedBox(height: 20),
-              Wrap(
-                spacing: 8,
-                runSpacing: 12,
-                children:
-                    categories
-                        .map(
-                          (category) => _buildCategoryCard(context, category),
-                        )
-                        .toList(),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: categories.length,
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 200,
+                  mainAxisSpacing: 16,
+                  crossAxisSpacing: 16,
+                  childAspectRatio: 1,
+                ),
+                itemBuilder: (context, index) {
+                  return _buildCategoryCard(context, categories[index]);
+                },
               ),
+
               const SizedBox(height: 20),
               const Text(
                 'Sources',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 10),
               Column(
@@ -308,18 +321,22 @@ class _FileManagerPageState extends State<FileManagerPage> {
       },
       child: Container(
         width: (MediaQuery.of(context).size.width / 3) - 20,
-        padding: const EdgeInsets.all(12),
+        height: 100,
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 1),
         decoration: BoxDecoration(
-          color: Colors.grey[900],
-          borderRadius: BorderRadius.circular(12),
+          color: Theme.of(context).colorScheme.primary,
+          borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
+          mainAxisAlignment:
+              MainAxisAlignment.spaceEvenly, // 👈 beautifully spread content
+
           children: [
-            Icon(category['icon'], color: category['color'], size: 26),
+            Icon(category['icon'], color: category['color'], size: 40),
             const SizedBox(height: 8),
             Text(
               category['title'],
-              style: const TextStyle(color: Colors.white),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),
             Text(
@@ -335,7 +352,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
   Widget _buildSourceTile(Map<String, dynamic> source) {
     return ListTile(
       leading: Icon(source['icon'], color: source['color'], size: 32),
-      title: Text(source['title'], style: const TextStyle(color: Colors.white)),
+      title: Text(source['title'], style: const TextStyle()),
       onTap: () {
         if (source['title'] == 'Received Files') {
           Navigator.push(
@@ -358,7 +375,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
   Future<Future<File>> saveFilesPermanently(PlatformFile file) async {
     final appStorage = await getApplicationDocumentsDirectory();
     final newFile = File('${appStorage.path}/${file.name}');
-
     return File(file.path!).copy(newFile.path);
   }
 

@@ -1,10 +1,9 @@
-import 'package:datavault/Scrrens/Stoarge.dart';
 import 'package:datavault/Scrrens/home.dart';
-import 'package:datavault/Scrrens/send_message.dart';
 import 'package:flutter/material.dart';
 import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:local_auth/local_auth.dart';
+import 'dart:io' show Platform;
 
 final logger = Logger();
 
@@ -54,7 +53,7 @@ class SetPinPageState extends State<SetPinPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('PIN Set Successfully!')));
+      ).showSnackBar(const SnackBar(content: Text('PIN Set Successfully!')));
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -62,9 +61,9 @@ class SetPinPageState extends State<SetPinPage> {
         ),
       );
     } else {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Please enter a 4-digit PIN')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a 4-digit PIN')),
+      );
     }
   }
 
@@ -85,7 +84,7 @@ class SetPinPageState extends State<SetPinPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Set Your PIN'),
+        title: const Text('Set Your PIN'),
         backgroundColor: Colors.blueGrey[600],
       ),
       backgroundColor: Colors.grey[300],
@@ -111,7 +110,6 @@ class EnterPinPage extends StatefulWidget {
 class EnterPinPageState extends State<EnterPinPage> {
   String enteredPin = "";
   final LocalAuthentication auth = LocalAuthentication();
-  // bool _isAuthenticating = false;
 
   @override
   void initState() {
@@ -121,6 +119,12 @@ class EnterPinPageState extends State<EnterPinPage> {
 
   Future<void> _authenticate() async {
     bool authenticated = false;
+
+    if (Platform.isWindows) {
+      logger.w("Biometric auth skipped: Unsupported on Windows.");
+      return;
+    }
+
     try {
       authenticated = await auth.authenticate(
         localizedReason: 'Use fingerprint to unlock',
@@ -130,13 +134,15 @@ class EnterPinPageState extends State<EnterPinPage> {
         ),
       );
     } catch (e) {
-      logger.e("Biometric auth error", error: e); // ✅ Logging instead of print
+      logger.e("Biometric auth error", error: e);
     }
+
     if (!mounted) return;
+
     if (authenticated) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => Home()),
+        MaterialPageRoute(builder: (context) => const Home()),
       );
     }
   }
@@ -156,15 +162,14 @@ class EnterPinPageState extends State<EnterPinPage> {
 
   void _checkPin() {
     if (enteredPin == widget.savedPin) {
-      ScaffoldMessenger.of(context);
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => Home()),
+        MaterialPageRoute(builder: (context) => const Home()),
       );
     } else {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Incorrect PIN!')));
+      ).showSnackBar(const SnackBar(content: Text('Incorrect PIN!')));
       setState(() {
         enteredPin = "";
       });
@@ -176,7 +181,7 @@ class EnterPinPageState extends State<EnterPinPage> {
     await prefs.remove('userPin');
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => SetPinPage()),
+      MaterialPageRoute(builder: (context) => const SetPinPage()),
     );
   }
 
@@ -185,19 +190,19 @@ class EnterPinPageState extends State<EnterPinPage> {
       context: context,
       builder:
           (context) => AlertDialog(
-            title: Text("Reset PIN"),
-            content: Text("Are you sure you want to reset your PIN?"),
+            title: const Text("Reset PIN"),
+            content: const Text("Are you sure you want to reset your PIN?"),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: Text("Cancel"),
+                child: const Text("Cancel"),
               ),
               TextButton(
                 onPressed: () {
                   Navigator.pop(context);
                   _resetPin();
                 },
-                child: Text("Reset"),
+                child: const Text("Reset"),
               ),
             ],
           ),
@@ -207,7 +212,7 @@ class EnterPinPageState extends State<EnterPinPage> {
   Widget _buildForgotPin() {
     return TextButton(
       onPressed: _showResetDialog,
-      child: Text(
+      child: const Text(
         "Forgot PIN?",
         style: TextStyle(color: Color.fromARGB(255, 44, 156, 200)),
       ),
@@ -218,7 +223,7 @@ class EnterPinPageState extends State<EnterPinPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Enter Your PIN'),
+        title: const Text('Enter Your PIN'),
         backgroundColor: Colors.blueGrey[600],
       ),
       backgroundColor: Colors.grey[300],
@@ -227,8 +232,6 @@ class EnterPinPageState extends State<EnterPinPage> {
         children: [
           PinCircles(pinLength: enteredPin.length),
           Keypad(onKeyPressed: _onKeyPressed),
-
-          // 👇 Add this IconButton here
           IconButton(
             icon: Icon(
               Icons.fingerprint,
@@ -237,7 +240,6 @@ class EnterPinPageState extends State<EnterPinPage> {
             ),
             onPressed: _authenticate,
           ),
-
           _buildForgotPin(),
         ],
       ),
@@ -256,7 +258,7 @@ class PinCircles extends StatelessWidget {
       children: List.generate(
         4,
         (i) => Container(
-          margin: EdgeInsets.symmetric(horizontal: 8),
+          margin: const EdgeInsets.symmetric(horizontal: 8),
           width: 20,
           height: 20,
           decoration: BoxDecoration(
@@ -286,10 +288,13 @@ class Keypad extends StatelessWidget {
         height: 70,
         child:
             text == 'back'
-                ? Icon(Icons.backspace, size: 30)
+                ? const Icon(Icons.backspace, size: 30)
                 : Text(
                   text,
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
       ),
     );
@@ -309,7 +314,8 @@ class Keypad extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children:
                 row.map((text) {
-                  if (text.isEmpty) return SizedBox(width: 70, height: 70);
+                  if (text.isEmpty)
+                    return const SizedBox(width: 70, height: 70);
                   return _buildKeypadButton(text);
                 }).toList(),
           ),
