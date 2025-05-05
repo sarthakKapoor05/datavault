@@ -75,6 +75,21 @@ class _ShareScreenState extends State<ShareScreen>
     {'name': 'Brandy', 'id': 'CP#25656835'},
     {'name': 'James', 'id': 'CP#25656835'},
     {'name': 'Anderson', 'id': 'CP#25656835'},
+    {'name': 'sarthaak', 'id': 'CP#05656835'},
+    {'name': 'bb', 'id': 'CP#25656805'},
+    {'name': 'c', 'id': 'CP#25656805'},
+    {'name': 'c', 'id': 'CP#25656805'},
+    {'name': 'c', 'id': 'CP#25656805'},
+    {'name': 'c', 'id': 'CP#25656805'},
+    {'name': 'c', 'id': 'CP#25656805'},
+    {'name': 'c', 'id': 'CP#25656805'},
+    {'name': 'c', 'id': 'CP#25656805'},
+    {'name': 'c', 'id': 'CP#25656805'},
+    {'name': 'c', 'id': 'CP#25656805'},
+    {'name': 'c', 'id': 'CP#25656805'},
+    {'name': 'c', 'id': 'CP#25656805'},
+    {'name': 'c', 'id': 'CP#25656805'},
+    {'name': 'c', 'id': 'CP#25656805'},
   ];
 
   late AnimationController _controller;
@@ -97,7 +112,7 @@ class _ShareScreenState extends State<ShareScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).colorScheme.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -132,7 +147,9 @@ class _ShareScreenState extends State<ShareScreen>
                             height: radius * 2,
                             decoration: BoxDecoration(
                               border: Border.all(
-                                color: Colors.white.withOpacity(0.2),
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.secondary.withOpacity(0.3),
                                 width: 1.5,
                               ),
                               shape: BoxShape.circle,
@@ -171,7 +188,6 @@ class _ShareScreenState extends State<ShareScreen>
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
                       ),
                     ),
                   ),
@@ -199,7 +215,7 @@ class _ShareScreenState extends State<ShareScreen>
       margin: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        color: Color(0xFF1C1C1C),
+        color: Theme.of(context).colorScheme.primary,
         boxShadow: [
           BoxShadow(color: Colors.black26, blurRadius: 5, offset: Offset(0, 2)),
         ],
@@ -207,7 +223,11 @@ class _ShareScreenState extends State<ShareScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.devices, size: 30, color: Colors.white),
+          Icon(
+            Icons.devices,
+            size: 30,
+            color: Theme.of(context).colorScheme.secondary,
+          ),
           const SizedBox(height: 8),
           Text(
             device['name']!,
@@ -216,7 +236,10 @@ class _ShareScreenState extends State<ShareScreen>
               color: Colors.white,
             ),
           ),
-          Text(device['id']!, style: TextStyle(color: Colors.grey.shade400)),
+          Text(
+            device['id']!,
+            style: TextStyle(color: Theme.of(context).colorScheme.secondary),
+          ),
           const SizedBox(height: 8),
           ElevatedButton(
             onPressed: () {},
@@ -224,9 +247,9 @@ class _ShareScreenState extends State<ShareScreen>
               backgroundColor: Color(0xFF50C2C9),
               padding: EdgeInsets.symmetric(horizontal: 20),
             ),
-            child: const Text(
+            child: Text(
               'Connect',
-              style: TextStyle(color: Color.fromARGB(255, 255, 255, 255)),
+              style: TextStyle(color: Theme.of(context).colorScheme.secondary),
             ),
           ),
         ],
