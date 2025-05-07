@@ -25,7 +25,7 @@ class _ShareScreenState extends State<ShareScreen>
       }
 
       // Connect to local WebSocket server on port 8080
-      final wsUrl = Uri.parse('ws://localhost:8080');
+      final wsUrl = Uri.parse('ws://192.168.18.27:8080');
       _channel = WebSocketChannel.connect(wsUrl);
 
       setState(() {
@@ -35,7 +35,7 @@ class _ShareScreenState extends State<ShareScreen>
       // Register this device (replace with actual device name if needed)
       _channel!.sink.add(jsonEncode({
         "type": "register_device",
-        "deviceName": "My Phone"
+        "deviceName": "triple m's laptop"
       }));
 
       // Request the current list of devices
@@ -240,15 +240,15 @@ class _ShareScreenState extends State<ShareScreen>
                       ),
                     ),
                   ),
-                  Expanded(
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: recentDevices.length,
-                      itemBuilder: (context, index) {
-                        return _recentDeviceCard(recentDevices[index]);
-                      },
-                    ),
-                  ),
+                  // Expanded(
+                  //   child: ListView.builder(
+                  //     scrollDirection: Axis.horizontal,
+                  //     itemCount: recentDevices.length,
+                  //     itemBuilder: (context, index) {
+                  //       return _recentDeviceCard(recentDevices[index]);
+                  //     },
+                  //   ),
+                  // ),
                 ],
               ),
             ),
