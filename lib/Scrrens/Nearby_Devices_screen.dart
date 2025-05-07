@@ -23,33 +23,46 @@ class _ShareScreenState extends State<ShareScreen>
       if (_channel != null) {
         await _channel?.sink.close();
       }
-      
+
       // Connect to local WebSocket server on port 8080
       final wsUrl = Uri.parse('ws://localhost:8080');
       _channel = WebSocketChannel.connect(wsUrl);
-      
+
       setState(() {
         _isConnected = true;
       });
-      
+
+      // Register this device (replace with actual device name if needed)
+      _channel!.sink.add(jsonEncode({
+        "type": "register_device",
+        "deviceName": "My Phone"
+      }));
+
+      // Request the current list of devices
+      _channel!.sink.add(jsonEncode({
+        "type": "get_connected_devices"
+      }));
+
       // Listen for messages from the server
       _channel!.stream.listen((message) {
-        // Parse the incoming message (assuming JSON format for client list)
-        try {
+        try { 
           final data = jsonDecode(message);
-          
-          if (data is List) {
-            setState(() {
-              _connectedClients = List<Map<String, dynamic>>.from(
-                data.map((client) => Map<String, dynamic>.from(client))
-              );
-            });
+
+          // Listen for the connected_devices event
+          if (data is Map && data['type'] == 'connected_devices') {
+            final devices = data['devices'];
+            if (devices is List) {
+              setState(() {
+                _connectedClients = List<Map<String, dynamic>>.from(
+                  devices.map((client) => Map<String, dynamic>.from(client))
+                );
+              });
+            }
           }
-          
         } catch (e) {
           print('Error parsing WebSocket message: $e');
         }
-      }, 
+      },
       onError: (error) {
         print('WebSocket error: $error');
         setState(() {
@@ -62,7 +75,7 @@ class _ShareScreenState extends State<ShareScreen>
           _isConnected = false;
         });
       });
-      
+
     } catch (e) {
       print('Failed to connect to WebSocket server: $e');
       setState(() {
