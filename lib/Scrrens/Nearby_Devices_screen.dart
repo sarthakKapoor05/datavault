@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:multicast_dns/multicast_dns.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'dart:convert';
 
 class ShareScreen extends StatefulWidget {
   @override
@@ -9,38 +12,64 @@ class ShareScreen extends StatefulWidget {
 
 class _ShareScreenState extends State<ShareScreen>
     with SingleTickerProviderStateMixin {
-  static const String name = '_dartobservatory._tcp.local';
-  final MDnsClient client = MDnsClient();
-  // Start the client with default options.
+  // WebSocket connection instance
+  WebSocketChannel? _channel;
+  bool _isConnected = false;
+  List<Map<String, dynamic>> _connectedClients = [];
 
   void startScanning() async {
-    await client.start();
-    // Start scanning for services
-    await for (final PtrResourceRecord ptr in client.lookup<PtrResourceRecord>(
-      ResourceRecordQuery.serverPointer(name),
-    )) {
-      // Use the domainName from the PTR record to get the SRV record,
-      // which will have the port and local hostname.
-      // Note that duplicate messages may come through, especially if any
-      // other mDNS queries are running elsewhere on the machine.
-      await for (final SrvResourceRecord srv in client
-          .lookup<SrvResourceRecord>(
-            ResourceRecordQuery.service(ptr.domainName),
-          )) {
-        // Domain name will be something like "io.flutter.example@some-iphone.local._dartobservatory._tcp.local"
-        final String bundleId =
-            ptr.domainName; //.substring(0, ptr.domainName.indexOf('@'));
-        print(
-          'Dart observatory instance found at '
-          '${srv.target}:${srv.port} for "$bundleId".',
-        );
+    try {
+      // Close existing connection if any
+      if (_channel != null) {
+        await _channel?.sink.close();
       }
+      
+      // Connect to local WebSocket server on port 8080
+      final wsUrl = Uri.parse('ws://localhost:8080');
+      _channel = WebSocketChannel.connect(wsUrl);
+      
+      setState(() {
+        _isConnected = true;
+      });
+      
+      // Listen for messages from the server
+      _channel!.stream.listen((message) {
+        // Parse the incoming message (assuming JSON format for client list)
+        try {
+          final data = jsonDecode(message);
+          
+          if (data is List) {
+            setState(() {
+              _connectedClients = List<Map<String, dynamic>>.from(
+                data.map((client) => Map<String, dynamic>.from(client))
+              );
+            });
+          }
+          
+        } catch (e) {
+          print('Error parsing WebSocket message: $e');
+        }
+      }, 
+      onError: (error) {
+        print('WebSocket error: $error');
+        setState(() {
+          _isConnected = false;
+        });
+      },
+      onDone: () {
+        print('WebSocket connection closed');
+        setState(() {
+          _isConnected = false;
+        });
+      });
+      
+    } catch (e) {
+      print('Failed to connect to WebSocket server: $e');
+      setState(() {
+        _isConnected = false;
+      });
     }
   }
-
-  // void stopScanning = () async {
-  //   await client.stop();
-  // }
 
   final List<Map<String, String>> recentDevices = [
     {'name': 'Brandy', 'id': 'CP#25656835'},
@@ -48,6 +77,8 @@ class _ShareScreenState extends State<ShareScreen>
     {'name': 'Anderson', 'id': 'CP#25656835'},
     {'name': 'sarthaak', 'id': 'CP#05656835'},
     {'name': 'bb', 'id': 'CP#25656805'},
+    {'name': 'c', 'id': 'CP#25656805'},
+    {'name': 'c', 'id': 'CP#25656805'},
     {'name': 'c', 'id': 'CP#25656805'},
     {'name': 'c', 'id': 'CP#25656805'},
     {'name': 'c', 'id': 'CP#25656805'},
@@ -132,21 +163,56 @@ class _ShareScreenState extends State<ShareScreen>
                   }),
                   GestureDetector(
                     onTap: () {
+                      print('button pressed');
                       startScanning();
                     },
                     child: Container(
                       width: 60,
                       height: 60,
                       decoration: BoxDecoration(
-                        color: Color(0xFF50C2C9),
+                        color: _isConnected ? Colors.green : Color(0xFF50C2C9),
                         shape: BoxShape.circle,
                       ),
-                      child: Icon(Icons.sync, color: Colors.white, size: 30),
+                      child: Icon(
+                        _isConnected ? Icons.wifi : Icons.sync,
+                        color: Colors.white,
+                        size: 30
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
+            // Display connected clients section
+            if (_connectedClients.isNotEmpty)
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        'Connected Clients',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF50C2C9),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _connectedClients.length,
+                        itemBuilder: (context, index) {
+                          return _connectedDeviceCard(_connectedClients[index]);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            // Recent devices section
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -175,6 +241,64 @@ class _ShareScreenState extends State<ShareScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // Card for connected devices
+  Widget _connectedDeviceCard(Map<String, dynamic> device) {
+    return Container(
+      width: 130,
+      margin: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: Theme.of(context).colorScheme.primary,
+        boxShadow: [
+          BoxShadow(color: Colors.black26, blurRadius: 5, offset: Offset(0, 2)),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.devices,
+            size: 30,
+            color: Colors.green,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            device['name'] ?? 'Unknown',
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          Text(
+            device['id'] ?? 'Unknown ID',
+            style: TextStyle(color: Theme.of(context).colorScheme.secondary),
+          ),
+          const SizedBox(height: 8),
+          ElevatedButton(
+            onPressed: () {
+              // Handle connection to this specific client
+              // You might want to send a message to the server indicating a connection request
+              if (_channel != null) {
+                _channel!.sink.add(jsonEncode({
+                  'action': 'connect',
+                  'targetId': device['id']
+                }));
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFF50C2C9),
+              padding: EdgeInsets.symmetric(horizontal: 20),
+            ),
+            child: Text(
+              'Connect',
+              style: TextStyle(color: Theme.of(context).colorScheme.secondary),
+            ),
+          ),
+        ],
       ),
     );
   }
