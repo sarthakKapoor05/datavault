@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math';
+import 'package:datavault/Scrrens/file_transfer_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:multicast_dns/multicast_dns.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -33,49 +34,60 @@ class _ShareScreenState extends State<ShareScreen>
       });
 
       // Register this device (replace with actual device name if needed)
+<<<<<<< HEAD
       _channel!.sink.add(jsonEncode({
         "type": "register_device",
         "deviceName": "triple m's laptop"
       }));
+=======
+      _channel!.sink.add(
+        jsonEncode({"type": "register_device", "deviceName": "G 16"}),
+      );
+>>>>>>> 4084b0b8773dfb9b24304abc358751a688560f5b
 
       // Request the current list of devices
-      _channel!.sink.add(jsonEncode({
-        "type": "get_connected_devices"
-      }));
+      _channel!.sink.add(jsonEncode({"type": "get_connected_devices"}));
 
       // Listen for messages from the server
-      _channel!.stream.listen((message) {
-        try { 
-          final data = jsonDecode(message);
+      _channel!.stream.listen(
+        (message) {
+          try {
+            final data = jsonDecode(message);
 
-          // Listen for the connected_devices event
-          if (data is Map && data['type'] == 'connected_devices') {
-            final devices = data['devices'];
-            if (devices is List) {
-              setState(() {
-                _connectedClients = List<Map<String, dynamic>>.from(
-                  devices.map((client) => Map<String, dynamic>.from(client))
-                );
-              });
+            // Listen for the connected_devices event
+            if (data is Map && data['type'] == 'connected_devices') {
+              final devices = data['devices'];
+              if (devices is List) {
+                setState(() {
+                  _connectedClients =
+                      devices
+                          .whereType<Map>() // ensure it's a Map
+                          .map(
+                            (client) => client.map(
+                              (key, value) => MapEntry(key.toString(), value),
+                            ),
+                          )
+                          .toList();
+                });
+              }
             }
+          } catch (e) {
+            print('Error parsing WebSocket message: $e');
           }
-        } catch (e) {
-          print('Error parsing WebSocket message: $e');
-        }
-      },
-      onError: (error) {
-        print('WebSocket error: $error');
-        setState(() {
-          _isConnected = false;
-        });
-      },
-      onDone: () {
-        print('WebSocket connection closed');
-        setState(() {
-          _isConnected = false;
-        });
-      });
-
+        },
+        onError: (error) {
+          print('WebSocket error: $error');
+          setState(() {
+            _isConnected = false;
+          });
+        },
+        onDone: () {
+          print('WebSocket connection closed');
+          setState(() {
+            _isConnected = false;
+          });
+        },
+      );
     } catch (e) {
       print('Failed to connect to WebSocket server: $e');
       setState(() {
@@ -189,7 +201,7 @@ class _ShareScreenState extends State<ShareScreen>
                       child: Icon(
                         _isConnected ? Icons.wifi : Icons.sync,
                         color: Colors.white,
-                        size: 30
+                        size: 30,
                       ),
                     ),
                   ),
@@ -273,11 +285,7 @@ class _ShareScreenState extends State<ShareScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.devices,
-            size: 30,
-            color: Colors.green,
-          ),
+          Icon(Icons.devices, size: 30, color: Colors.green),
           const SizedBox(height: 8),
           Text(
             device['name'] ?? 'Unknown',
@@ -293,14 +301,25 @@ class _ShareScreenState extends State<ShareScreen>
           const SizedBox(height: 8),
           ElevatedButton(
             onPressed: () {
-              // Handle connection to this specific client
-              // You might want to send a message to the server indicating a connection request
-              if (_channel != null) {
-                _channel!.sink.add(jsonEncode({
-                  'action': 'connect',
-                  'targetId': device['id']
-                }));
-              }
+              // Create a new channel for each file transfer screen
+              final wsUrl = Uri.parse('ws://192.168.18.27:8080');
+              final newChannel = WebSocketChannel.connect(wsUrl);
+
+              // Optionally, send the connect message on the new channel
+              newChannel.sink.add(
+                jsonEncode({'action': 'connect', 'targetId': device['id']}),
+              );
+
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder:
+                      (context) => FileTransferScreen(
+                        deviceId: device['id'],
+                        channel: newChannel,
+                      ),
+                ),
+              );
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Color(0xFF50C2C9),
