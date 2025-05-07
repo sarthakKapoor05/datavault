@@ -1,5 +1,5 @@
 import 'package:datavault/Scrrens/pin_page.dart';
-import 'package:datavault/them/theme_provider.dart';
+import 'package:datavault/theme/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
