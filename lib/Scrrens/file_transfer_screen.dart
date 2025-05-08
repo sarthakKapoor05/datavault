@@ -51,11 +51,13 @@ class ReceivedFile {
 class FileTransferScreen extends StatefulWidget {
   final String deviceId;
   final WebSocketChannel channel;
+  final Stream<dynamic>? broadcastStream; // Add this parameter
 
   const FileTransferScreen({
     super.key,
     required this.deviceId,
     required this.channel,
+    this.broadcastStream, // Accept broadcast stream
   });
 
   @override
@@ -76,70 +78,73 @@ class _FileTransferScreenState extends State<FileTransferScreen> {
   @override
   void initState() {
     super.initState();
-    widget.channel.stream.listen(
-      (message) async {
-        if (message is Uint8List) {
-          if (_incomingFileMeta != null) {
-            final fileMeta = _incomingFileMeta!;
-            final directory = await getTemporaryDirectory();
-            final filePath = '${directory.path}/${fileMeta.filename}';
-            final file = File(filePath);
-            await file.writeAsBytes(message);
-            setState(() {
-              receivedFiles[fileMeta.filename] =
-                  ReceivedFile(
+    // Use the broadcast stream if available, otherwise don't listen
+    if (widget.broadcastStream != null) {
+      widget.broadcastStream!.listen(
+        (message) async {
+          if (message is Uint8List) {
+            if (_incomingFileMeta != null) {
+              final fileMeta = _incomingFileMeta!;
+              final directory = await getTemporaryDirectory();
+              final filePath = '${directory.path}/${fileMeta.filename}';
+              final file = File(filePath);
+              await file.writeAsBytes(message);
+              setState(() {
+                receivedFiles[fileMeta.filename] =
+                    ReceivedFile(
                       filename: fileMeta.filename,
                       contentType: fileMeta.contentType,
                       totalSize: fileMeta.totalSize,
                     )
                     ..isComplete = true
                     ..localPath = filePath;
-              _incomingFileMeta = null;
-            });
-          }
-        } else {
-          try {
-            final Map<String, dynamic> data = jsonDecode(message.toString());
-            if (data['type'] == 'file_metadata') {
-              _incomingFileMeta = ReceivedFile(
-                filename: data['filename'],
-                contentType: data['contentType'] ?? 'application/octet-stream',
-                totalSize: data['size'],
-              );
-              setState(() {});
-            } else if (data['type'] == 'file_notification') {
-              setState(() {
-                messageHistory.add('New file available: ${data['filename']}');
-              });
-              widget.channel.sink.add(
-                jsonEncode({
-                  "type": "request_file",
-                  "filename": data['filename'],
-                }),
-              );
-            } else if (data['type'] == 'file_received') {
-              setState(() {
-                messageHistory.add('File uploaded: ${data['filename']}');
-              });
-            } else if (data['type'] == 'message') {
-              setState(() {
-                messageHistory.add(data['text']);
-              });
-            } else {
-              setState(() {
-                messageHistory.add(data);
+                _incomingFileMeta = null;
               });
             }
-          } catch (_) {
-            setState(() {
-              messageHistory.add(message.toString());
-            });
+          } else {
+            try {
+              final Map<String, dynamic> data = jsonDecode(message.toString());
+              if (data['type'] == 'file_metadata') {
+                _incomingFileMeta = ReceivedFile(
+                  filename: data['filename'],
+                  contentType: data['contentType'] ?? 'application/octet-stream',
+                  totalSize: data['size'],
+                );
+                setState(() {});
+              } else if (data['type'] == 'file_notification') {
+                setState(() {
+                  messageHistory.add('New file available: ${data['filename']}');
+                });
+                widget.channel.sink.add(
+                  jsonEncode({
+                    "type": "request_file",
+                    "filename": data['filename'],
+                  }),
+                );
+              } else if (data['type'] == 'file_received') {
+                setState(() {
+                  messageHistory.add('File uploaded: ${data['filename']}');
+                });
+              } else if (data['type'] == 'message') {
+                setState(() {
+                  messageHistory.add(data['text']);
+                });
+              } else {
+                setState(() {
+                  messageHistory.add(data);
+                });
+              }
+            } catch (_) {
+              setState(() {
+                messageHistory.add(message.toString());
+              });
+            }
           }
-        }
-      },
-      onDone: () {},
-      onError: (_) {},
-    );
+        },
+        onDone: () {},
+        onError: (_) {},
+      );
+    }
   }
 
   Future<void> sendFileMetadata() async {
