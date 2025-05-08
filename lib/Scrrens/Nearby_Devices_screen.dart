@@ -52,15 +52,9 @@ class _ShareScreenState extends State<ShareScreen>
               final devices = data['devices'];
               if (devices is List) {
                 setState(() {
-                  _connectedClients =
-                      devices
-                          .whereType<Map>() // ensure it's a Map
-                          .map(
-                            (client) => client.map(
-                              (key, value) => MapEntry(key.toString(), value),
-                            ),
-                          )
-                          .toList();
+                  _connectedClients = List<Map<String, dynamic>>.from(
+                    devices.map((client) => Map<String, dynamic>.from(client)),
+                  );
                 });
               }
             }
@@ -218,7 +212,8 @@ class _ShareScreenState extends State<ShareScreen>
                         ),
                       ),
                     ),
-                    Expanded(
+                    SizedBox(height: 8),
+                    Flexible(
                       child: ListView.builder(
                         scrollDirection: Axis.horizontal,
                         itemCount: _connectedClients.length,
@@ -267,6 +262,7 @@ class _ShareScreenState extends State<ShareScreen>
   Widget _connectedDeviceCard(Map<String, dynamic> device) {
     return Container(
       width: 130,
+      height: 220,
       margin: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
@@ -277,11 +273,14 @@ class _ShareScreenState extends State<ShareScreen>
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.max,
         children: [
           Icon(Icons.devices, size: 30, color: Colors.green),
           const SizedBox(height: 8),
           Text(
             device['name'] ?? 'Unknown',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontWeight: FontWeight.bold,
               color: Colors.white,
@@ -289,16 +288,16 @@ class _ShareScreenState extends State<ShareScreen>
           ),
           Text(
             device['id'] ?? 'Unknown ID',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(color: Theme.of(context).colorScheme.secondary),
           ),
           const SizedBox(height: 8),
           ElevatedButton(
             onPressed: () {
-              // Create a new channel for each file transfer screen
               final wsUrl = Uri.parse('ws://192.168.18.27:8080');
               final newChannel = WebSocketChannel.connect(wsUrl);
 
-              // Optionally, send the connect message on the new channel
               newChannel.sink.add(
                 jsonEncode({'action': 'connect', 'targetId': device['id']}),
               );

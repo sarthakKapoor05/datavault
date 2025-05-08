@@ -31,13 +31,13 @@ class _DesktopSettingState extends State<DesktopSetting> {
               Icons.brightness_6,
               color: Theme.of(context).colorScheme.secondary,
             ),
-            title: const Text('Dark Mode'),
+            title: Text(themeProvider.isDarkMode ? 'Dark Mode' : 'Light Mode'),
             trailing: Switch(
               value: themeProvider.isDarkMode,
               onChanged: (value) {
                 themeProvider.toggleTheme();
               },
-              activeColor: Theme.of(context).colorScheme.primary,
+              activeColor: Theme.of(context).colorScheme.secondary,
             ),
           ),
         ],
