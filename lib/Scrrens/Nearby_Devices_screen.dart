@@ -240,15 +240,15 @@ class _ShareScreenState extends State<ShareScreen>
                       ),
                     ),
                   ),
-                  Expanded(
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: recentDevices.length,
-                      itemBuilder: (context, index) {
-                        return _recentDeviceCard(recentDevices[index]);
-                      },
-                    ),
-                  ),
+                  // Expanded(
+                  //   child: ListView.builder(
+                  //     scrollDirection: Axis.horizontal,
+                  //     itemCount: recentDevices.length,
+                  //     itemBuilder: (context, index) {
+                  //       return _recentDeviceCard(recentDevices[index]);
+                  //     },
+                  //   ),
+                  // ),
                 ],
               ),
             ),
