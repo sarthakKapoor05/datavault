@@ -34,16 +34,9 @@ class _ShareScreenState extends State<ShareScreen>
       });
 
       // Register this device (replace with actual device name if needed)
-<<<<<<< HEAD
-      _channel!.sink.add(jsonEncode({
-        "type": "register_device",
-        "deviceName": "triple m's laptop"
-      }));
-=======
       _channel!.sink.add(
         jsonEncode({"type": "register_device", "deviceName": "G 16"}),
       );
->>>>>>> 4084b0b8773dfb9b24304abc358751a688560f5b
 
       // Request the current list of devices
       _channel!.sink.add(jsonEncode({"type": "get_connected_devices"}));
