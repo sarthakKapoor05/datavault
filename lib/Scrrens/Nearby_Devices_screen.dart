@@ -1,10 +1,13 @@
 import 'dart:io';
 import 'dart:math';
 import 'package:datavault/Scrrens/file_transfer_screen.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:multicast_dns/multicast_dns.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart'; // Add this package
 
 class ShareScreen extends StatefulWidget {
   @override
@@ -13,10 +16,13 @@ class ShareScreen extends StatefulWidget {
 
 class _ShareScreenState extends State<ShareScreen>
     with SingleTickerProviderStateMixin {
-  // WebSocket connection instance
-  WebSocketChannel? _channel;
+  // Add device identifier
+  String? _deviceId;
   bool _isConnected = false;
+  WebSocketChannel? _channel;
+  Stream<dynamic>? _broadcastStream; // Add this to store the broadcast stream
   List<Map<String, dynamic>> _connectedClients = [];
+  Map<String, dynamic>? _expectedFile;
 
   void startScanning() async {
     try {
@@ -28,35 +34,69 @@ class _ShareScreenState extends State<ShareScreen>
       // Connect to local WebSocket server on port 8080
       final wsUrl = Uri.parse('ws://192.168.18.226:8080');
       _channel = WebSocketChannel.connect(wsUrl);
+      
+      // Create a broadcast stream that can be listened to multiple times
+      _broadcastStream = _channel!.stream.asBroadcastStream();
 
       setState(() {
         _isConnected = true;
       });
 
-      // Register this device (replace with actual device name if needed)
+      // Register this device WITH the stored deviceId
       _channel!.sink.add(
-        jsonEncode({"type": "register_device", "deviceName": "G 16"}),
+        jsonEncode({
+          "type": "register_device",
+          "deviceName": "LOQ",
+          "deviceId": _deviceId, // Include the stored deviceId if available
+        }),
       );
 
       // Request the current list of devices
       _channel!.sink.add(jsonEncode({"type": "get_connected_devices"}));
 
-      // Listen for messages from the server
-      _channel!.stream.listen(
+      // Listen for messages from the server using our broadcast stream
+      _broadcastStream!.listen(
         (message) {
           try {
-            final data = jsonDecode(message);
+            if (message is String) {
+              final data = jsonDecode(message);
 
-            // Listen for the connected_devices event
-            if (data is Map && data['type'] == 'connected_devices') {
-              final devices = data['devices'];
-              if (devices is List) {
-                setState(() {
-                  _connectedClients = List<Map<String, dynamic>>.from(
-                    devices.map((client) => Map<String, dynamic>.from(client)),
-                  );
-                });
+              // Handle device registration confirmation
+              if (data['type'] == 'device_registered') {
+                // Store the deviceId for future reconnections
+                _saveDeviceId(data['deviceId']);
               }
+
+              // Handle connected devices list
+              if (data['type'] == 'connected_devices') {
+                final devices = data['devices'];
+                if (devices is List) {
+                  setState(() {
+                    _connectedClients = List<Map<String, dynamic>>.from(
+                      devices.map((client) => Map<String, dynamic>.from(client)),
+                    );
+                  });
+                }
+              }
+
+              // Handle file metadata message
+              if (data['type'] == 'file_metadata') {
+                // Store metadata for the incoming file
+                _expectedFile = {
+                  'filename': data['filename'],
+                  'size': data['size'],
+                  'fromId': data['fromId'],
+                };
+
+                // Show notification about incoming file
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Receiving file: ${data['filename']}')),
+                );
+              }
+            }
+            // Handle binary data (file content)
+            else if (message is List<int> && _expectedFile != null) {
+              _handleIncomingFile(message);
             }
           } catch (e) {
             print('Error parsing WebSocket message: $e');
@@ -104,6 +144,8 @@ class _ShareScreenState extends State<ShareScreen>
     {'name': 'c', 'id': 'CP#25656805'},
     {'name': 'c', 'id': 'CP#25656805'},
     {'name': 'c', 'id': 'CP#25656805'},
+    {'name': 'c', 'id': 'CP#25656805'},
+    {'name': 'c', 'id': 'CP#25656805'},
   ];
 
   late AnimationController _controller;
@@ -115,12 +157,101 @@ class _ShareScreenState extends State<ShareScreen>
       duration: const Duration(seconds: 5),
       vsync: this,
     )..repeat(); // Continuous waving
+
+    // Load device ID at startup
+    _loadDeviceId();
   }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  // Load stored device ID
+  Future<void> _loadDeviceId() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _deviceId = prefs.getString('device_id');
+    });
+  }
+
+  // Save device ID for future sessions
+  Future<void> _saveDeviceId(String deviceId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('device_id', deviceId);
+    setState(() {
+      _deviceId = deviceId;
+    });
+  }
+
+  // Handle incoming file data
+  Future<void> _handleIncomingFile(List<int> fileData) async {
+    try {
+      // Create a file in app directory
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}/${_expectedFile!['filename']}');
+      await file.writeAsBytes(fileData);
+
+      // Show success notification
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('File received: ${_expectedFile!['filename']}')),
+      );
+
+      // Clear the expected file metadata
+      setState(() {
+        _expectedFile = null;
+      });
+    } catch (e) {
+      print('Error saving received file: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save file: $e')),
+      );
+    }
+  }
+
+  // Add this method to send a file to another client
+  Future<void> sendFileToClient(String targetId) async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles();
+
+    if (result != null && result.files.single.path != null) {
+      try {
+        File file = File(result.files.single.path!);
+        final fileBytes = await file.readAsBytes();
+        final fileName = result.files.single.name;
+        final fileSize = fileBytes.length;
+
+        // Show sending notification
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Sending file: $fileName')),
+        );
+
+        // Send metadata with targetId
+        _channel!.sink.add(jsonEncode({
+          "type": "file_metadata",
+          "filename": fileName,
+          "size": fileSize,
+          "contentType": "application/octet-stream",
+          "targetId": targetId,
+        }));
+
+        // Listen for ready_for_file event from server
+        bool fileSent = false;
+        _channel!.stream.listen((message) {
+          if (!fileSent && message is String) {
+            final data = jsonDecode(message);
+            if (data['type'] == 'ready_for_file') {
+              // Send the actual file data
+              _channel!.sink.add(fileBytes);
+              fileSent = true;
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('File sent successfully')),
+              );
+            }
+          }
+        });
+      } catch (e) {
+        print('Error sending file: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to send file: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -260,9 +391,14 @@ class _ShareScreenState extends State<ShareScreen>
 
   // Card for connected devices
   Widget _connectedDeviceCard(Map<String, dynamic> device) {
+    // Don't show our own device in the list
+    if (_deviceId != null && device['deviceId'] == _deviceId) {
+      return SizedBox.shrink(); // Hide our own device
+    }
+
     return Container(
       width: 130,
-      height: 220,
+      height: 260, // Made taller for the additional button
       margin: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
@@ -295,21 +431,14 @@ class _ShareScreenState extends State<ShareScreen>
           const SizedBox(height: 8),
           ElevatedButton(
             onPressed: () {
-              final wsUrl = Uri.parse('ws://192.168.18.27:8080');
-              final newChannel = WebSocketChannel.connect(wsUrl);
-
-              newChannel.sink.add(
-                jsonEncode({'action': 'connect', 'targetId': device['id']}),
-              );
-
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder:
-                      (context) => FileTransferScreen(
-                        deviceId: device['id'],
-                        channel: newChannel,
-                      ),
+                  builder: (context) => FileTransferScreen(
+                    deviceId: device['id'],
+                    channel: _channel!,
+                    broadcastStream: _broadcastStream, // Pass the broadcast stream
+                  ),
                 ),
               );
             },
@@ -319,6 +448,18 @@ class _ShareScreenState extends State<ShareScreen>
             ),
             child: Text(
               'Connect',
+              style: TextStyle(color: Theme.of(context).colorScheme.secondary),
+            ),
+          ),
+          const SizedBox(height: 8),
+          ElevatedButton(
+            onPressed: () => sendFileToClient(device['id']),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.amber,
+              padding: EdgeInsets.symmetric(horizontal: 20),
+            ),
+            child: Text(
+              'Send File',
               style: TextStyle(color: Theme.of(context).colorScheme.secondary),
             ),
           ),
