@@ -1,6 +1,8 @@
 import 'package:datavault/theme/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'name_edit_screen.dart'; // Import the new screen
 
 class TabletSetting extends StatefulWidget {
   const TabletSetting({super.key});
@@ -10,6 +12,26 @@ class TabletSetting extends StatefulWidget {
 }
 
 class _TabletSettingState extends State<TabletSetting> {
+  String userName = "";
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserName();
+  }
+
+  Future<void> _loadUserName() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      userName = prefs.getString('device_name') ?? " Kapoor";
+    });
+  }
+
+  Future<void> _saveUserName(String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('device_name', name);
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
@@ -28,10 +50,50 @@ class _TabletSettingState extends State<TabletSetting> {
         children: [
           ListTile(
             leading: Icon(
+              Icons.person,
+              color: Theme.of(context).colorScheme.secondary,
+            ),
+            title: Text(
+              'Device Name',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onBackground,
+              ),
+            ),
+            subtitle: Text(
+              userName,
+              style: TextStyle(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onBackground.withOpacity(0.7),
+              ),
+            ),
+            onTap: () async {
+              final updatedName = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => NameEditScreen(currentName: userName),
+                ),
+              );
+              if (updatedName != null && updatedName is String) {
+                setState(() {
+                  userName = updatedName;
+                });
+                await _saveUserName(updatedName);
+              }
+            },
+          ),
+          Divider(),
+          ListTile(
+            leading: Icon(
               Icons.brightness_6,
               color: Theme.of(context).colorScheme.secondary,
             ),
-            title: Text(themeProvider.isDarkMode ? 'Dark Mode' : 'Light Mode'),
+            title: Text(
+              themeProvider.isDarkMode ? 'Dark Mode' : 'Light Mode',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onBackground,
+              ),
+            ),
             trailing: Switch(
               value: themeProvider.isDarkMode,
               onChanged: (value) {

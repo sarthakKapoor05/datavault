@@ -12,7 +12,7 @@ class MobileSettings extends StatefulWidget {
 }
 
 class _MobileSettingsState extends State<MobileSettings> {
-  String userName = "Sarthak Kapoor";
+  String userName = "";
 
   @override
   void initState() {

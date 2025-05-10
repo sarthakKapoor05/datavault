@@ -1,6 +1,7 @@
 import 'package:datavault/theme/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'name_edit_screen.dart'; // Import the new screen
 
 class DesktopSetting extends StatefulWidget {
@@ -11,7 +12,25 @@ class DesktopSetting extends StatefulWidget {
 }
 
 class _DesktopSettingState extends State<DesktopSetting> {
-  String userName = "Sarthak Kapoor";
+  String userName = "";
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserName();
+  }
+
+  Future<void> _loadUserName() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      userName = prefs.getString('device_name') ?? " Kapoor";
+    });
+  }
+
+  Future<void> _saveUserName(String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('device_name', name);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +78,7 @@ class _DesktopSettingState extends State<DesktopSetting> {
                 setState(() {
                   userName = updatedName;
                 });
+                await _saveUserName(updatedName);
               }
             },
           ),
