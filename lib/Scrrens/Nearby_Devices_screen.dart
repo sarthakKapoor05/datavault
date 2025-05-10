@@ -46,7 +46,7 @@ class _ShareScreenState extends State<ShareScreen>
       _channel!.sink.add(
         jsonEncode({
           "type": "register_device",
-          "deviceName": "G 16.1",
+          "deviceName": "G 16",
           "deviceId": _deviceId, // Include the stored deviceId if available
         }),
       );
@@ -436,7 +436,42 @@ class _ShareScreenState extends State<ShareScreen>
           ),
           const SizedBox(height: 8),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
+              // If already connected, disconnect first
+              if (_isConnected && _channel != null) {
+                await _channel!.sink.close();
+                setState(() {
+                  _isConnected = false;
+                  _channel = null;
+                });
+              }
+
+              // Reconnect
+              final wsUrl = Uri.parse('ws://192.168.18.226:8080');
+              _channel = WebSocketChannel.connect(wsUrl);
+
+              // Recreate broadcast stream
+              _broadcastStream = _channel!.stream.asBroadcastStream();
+
+              setState(() {
+                _isConnected = true;
+              });
+
+              // Register this device again (optional, but recommended)
+              final prefs = await SharedPreferences.getInstance();
+              final deviceName = prefs.getString('device_name') ?? "G 16";
+              _channel!.sink.add(
+                jsonEncode({
+                  "type": "register_device",
+                  "deviceName": deviceName,
+                  "deviceId": _deviceId,
+                }),
+              );
+
+              // Optionally request the current list of devices again
+              _channel!.sink.add(jsonEncode({"type": "get_connected_devices"}));
+
+              // Navigate to FileTransferScreen
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -444,8 +479,7 @@ class _ShareScreenState extends State<ShareScreen>
                       (context) => FileTransferScreen(
                         deviceId: device['id'],
                         channel: _channel!,
-                        broadcastStream:
-                            _broadcastStream, // Pass the broadcast stream
+                        broadcastStream: _broadcastStream,
                       ),
                 ),
               );
