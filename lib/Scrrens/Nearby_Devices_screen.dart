@@ -30,11 +30,11 @@ class _ShareScreenState extends State<ShareScreen>
       if (_channel != null) {
         await _channel?.sink.close();
       }
- 
+
       // Connect to local WebSocket server on port 8080
-      final wsUrl = Uri.parse('ws://192.168.18.226:8080');
+      final wsUrl = Uri.parse('ws://192.168.131.23:8080');
       _channel = WebSocketChannel.connect(wsUrl);
-      
+
       // Create a broadcast stream that can be listened to multiple times
       _broadcastStream = _channel!.stream.asBroadcastStream();
 
@@ -46,7 +46,7 @@ class _ShareScreenState extends State<ShareScreen>
       _channel!.sink.add(
         jsonEncode({
           "type": "register_device",
-          "deviceName": "LOQ",
+          "deviceName": "G 16.1",
           "deviceId": _deviceId, // Include the stored deviceId if available
         }),
       );
@@ -73,7 +73,9 @@ class _ShareScreenState extends State<ShareScreen>
                 if (devices is List) {
                   setState(() {
                     _connectedClients = List<Map<String, dynamic>>.from(
-                      devices.map((client) => Map<String, dynamic>.from(client)),
+                      devices.map(
+                        (client) => Map<String, dynamic>.from(client),
+                      ),
                     );
                   });
                 }
@@ -90,7 +92,9 @@ class _ShareScreenState extends State<ShareScreen>
 
                 // Show notification about incoming file
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Receiving file: ${data['filename']}')),
+                  SnackBar(
+                    content: Text('Receiving file: ${data['filename']}'),
+                  ),
                 );
               }
             }
@@ -198,9 +202,9 @@ class _ShareScreenState extends State<ShareScreen>
       });
     } catch (e) {
       print('Error saving received file: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save file: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to save file: $e')));
     }
   }
 
@@ -216,18 +220,20 @@ class _ShareScreenState extends State<ShareScreen>
         final fileSize = fileBytes.length;
 
         // Show sending notification
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Sending file: $fileName')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Sending file: $fileName')));
 
         // Send metadata with targetId
-        _channel!.sink.add(jsonEncode({
-          "type": "file_metadata",
-          "filename": fileName,
-          "size": fileSize,
-          "contentType": "application/octet-stream",
-          "targetId": targetId,
-        }));
+        _channel!.sink.add(
+          jsonEncode({
+            "type": "file_metadata",
+            "filename": fileName,
+            "size": fileSize,
+            "contentType": "application/octet-stream",
+            "targetId": targetId,
+          }),
+        );
 
         // Listen for ready_for_file event from server
         bool fileSent = false;
@@ -239,17 +245,17 @@ class _ShareScreenState extends State<ShareScreen>
               _channel!.sink.add(fileBytes);
               fileSent = true;
 
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('File sent successfully')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text('File sent successfully')));
             }
           }
         });
       } catch (e) {
         print('Error sending file: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to send file: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to send file: $e')));
       }
     }
   }
@@ -434,11 +440,13 @@ class _ShareScreenState extends State<ShareScreen>
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => FileTransferScreen(
-                    deviceId: device['id'],
-                    channel: _channel!,
-                    broadcastStream: _broadcastStream, // Pass the broadcast stream
-                  ),
+                  builder:
+                      (context) => FileTransferScreen(
+                        deviceId: device['id'],
+                        channel: _channel!,
+                        broadcastStream:
+                            _broadcastStream, // Pass the broadcast stream
+                      ),
                 ),
               );
             },

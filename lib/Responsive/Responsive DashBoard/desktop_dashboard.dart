@@ -82,7 +82,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       backgroundColor: Theme.of(context).colorScheme.background,
       appBar: AppBar(
         title: Text(
-          'Mobile Files',
+          'Files',
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
         ),
         backgroundColor: Theme.of(context).colorScheme.background,
