@@ -32,7 +32,7 @@ class _ShareScreenState extends State<ShareScreen>
       }
 
       // Connect to local WebSocket server on port 8080
-      final wsUrl = Uri.parse('ws://192.168.18.27:8080');
+      final wsUrl = Uri.parse('ws://192.168.18.226:8080');
       _channel = WebSocketChannel.connect(wsUrl);
 
       // Create a broadcast stream that can be listened to multiple times
