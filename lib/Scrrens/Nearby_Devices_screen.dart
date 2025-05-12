@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'package:datavault/Scrrens/file_transfer_screen.dart';
@@ -24,6 +25,8 @@ class _ShareScreenState extends State<ShareScreen>
   List<Map<String, dynamic>> _connectedClients = [];
   Map<String, dynamic>? _expectedFile;
 
+  Timer? _pingTimer;
+
   void startScanning() async {
     try {
       // Close existing connection if any
@@ -32,7 +35,7 @@ class _ShareScreenState extends State<ShareScreen>
       }
 
       // Connect to local WebSocket server on port 8080
-      final wsUrl = Uri.parse('ws://192.168.18.226:8080');
+      final wsUrl = Uri.parse('ws://192.168.18.27:8080');
       _channel = WebSocketChannel.connect(wsUrl);
 
       // Create a broadcast stream that can be listened to multiple times
@@ -41,12 +44,13 @@ class _ShareScreenState extends State<ShareScreen>
       setState(() {
         _isConnected = true;
       });
+      _startPingTimer(); // Start the ping timer
 
       // Register this device WITH the stored deviceId
       _channel!.sink.add(
         jsonEncode({
           "type": "register_device",
-          "deviceName": "G 16",
+          "deviceName": "LOQ",
           "deviceId": _deviceId, // Include the stored deviceId if available
         }),
       );
@@ -111,12 +115,32 @@ class _ShareScreenState extends State<ShareScreen>
           setState(() {
             _isConnected = false;
           });
+          // Show reconnection snackbar
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Connection lost. Please reconnect.'),
+              action: SnackBarAction(
+                label: 'Retry',
+                onPressed: startScanning,
+              ),
+            ),
+          );
         },
         onDone: () {
           print('WebSocket connection closed');
           setState(() {
             _isConnected = false;
           });
+          // Show reconnection snackbar
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Connection closed. Please reconnect.'),
+              action: SnackBarAction(
+                label: 'Retry',
+                onPressed: startScanning,
+              ),
+            ),
+          );
         },
       );
     } catch (e) {
@@ -133,6 +157,9 @@ class _ShareScreenState extends State<ShareScreen>
     {'name': 'Anderson', 'id': 'CP#25656835'},
     {'name': 'sarthaak', 'id': 'CP#05656835'},
     {'name': 'bb', 'id': 'CP#25656805'},
+    {'name': 'c', 'id': 'CP#25656805'},
+    {'name': 'c', 'id': 'CP#25656805'},
+    {'name': 'c', 'id': 'CP#25656805'},
     {'name': 'c', 'id': 'CP#25656805'},
     {'name': 'c', 'id': 'CP#25656805'},
     {'name': 'c', 'id': 'CP#25656805'},
@@ -272,6 +299,33 @@ class _ShareScreenState extends State<ShareScreen>
     }
   }
 
+  // Start ping timer to keep connection alive and detect disconnection
+  void _startPingTimer() {
+    _pingTimer?.cancel();
+    _pingTimer = Timer.periodic(Duration(seconds: 15), (timer) {
+      if (_channel != null) {
+        try {
+          // Send a ping
+          _channel!.sink.add(jsonEncode({"type": "ping"}));
+        } catch (e) {
+          // If ping fails, update connection status
+          setState(() {
+            _isConnected = false;
+          });
+          _pingTimer?.cancel();
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _pingTimer?.cancel();
+    _controller.dispose();
+    _channel?.sink.close();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -279,6 +333,47 @@ class _ShareScreenState extends State<ShareScreen>
       body: SafeArea(
         child: Column(
           children: [
+            // Add connection status indicator bar
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+              color: _isConnected ? Colors.green.shade700 : Colors.red.shade700,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    _isConnected ? Icons.wifi : Icons.wifi_off,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    _isConnected ? 'Connected to Server' : 'Disconnected',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Retry connection button
+            if (!_isConnected)
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Center(
+                  child: ElevatedButton.icon(
+                    icon: Icon(Icons.refresh),
+                    label: Text("Retry Connection"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(0xFF50C2C9),
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: startScanning,
+                  ),
+                ),
+              ),
             const Padding(
               padding: EdgeInsets.all(16.0),
               child: Text(
@@ -415,7 +510,7 @@ class _ShareScreenState extends State<ShareScreen>
     }
 
     return Container(
-      width: 130,
+      width: 330,
       height: 260, // Made taller for the additional button
       margin: const EdgeInsets.all(8),
       decoration: BoxDecoration(
