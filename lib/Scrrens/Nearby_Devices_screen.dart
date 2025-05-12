@@ -9,6 +9,13 @@ import 'package:path_provider/path_provider.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart'; // Add this package
+import 'package:open_file/open_file.dart';
+
+enum FileTransferMode {
+  idle,
+  sending,
+  receiving
+}
 
 class ShareScreen extends StatefulWidget {
   @override
@@ -152,34 +159,13 @@ class _ShareScreenState extends State<ShareScreen>
   }
 
   final List<Map<String, String>> recentDevices = [
-    {'name': 'Brandy', 'id': 'CP#25656835'},
-    {'name': 'James', 'id': 'CP#25656835'},
-    {'name': 'Anderson', 'id': 'CP#25656835'},
-    {'name': 'sarthaak', 'id': 'CP#05656835'},
-    {'name': 'bb', 'id': 'CP#25656805'},
-    {'name': 'c', 'id': 'CP#25656805'},
-    {'name': 'c', 'id': 'CP#25656805'},
-    {'name': 'c', 'id': 'CP#25656805'},
-    {'name': 'c', 'id': 'CP#25656805'},
-    {'name': 'c', 'id': 'CP#25656805'},
-    {'name': 'c', 'id': 'CP#25656805'},
-    {'name': 'c', 'id': 'CP#25656805'},
-    {'name': 'c', 'id': 'CP#25656805'},
-    {'name': 'c', 'id': 'CP#25656805'},
-    {'name': 'c', 'id': 'CP#25656805'},
-    {'name': 'c', 'id': 'CP#25656805'},
-    {'name': 'c', 'id': 'CP#25656805'},
-    {'name': 'c', 'id': 'CP#25656805'},
-    {'name': 'c', 'id': 'CP#25656805'},
-    {'name': 'c', 'id': 'CP#25656805'},
-    {'name': 'c', 'id': 'CP#25656805'},
-    {'name': 'c', 'id': 'CP#25656805'},
-    {'name': 'c', 'id': 'CP#25656805'},
-    {'name': 'c', 'id': 'CP#25656805'},
-    {'name': 'c', 'id': 'CP#25656805'},
+    
   ];
 
   late AnimationController _controller;
+
+  // Add to your _ShareScreenState class
+  FileTransferMode _transferMode = FileTransferMode.idle;
 
   @override
   void initState() {
@@ -213,15 +199,26 @@ class _ShareScreenState extends State<ShareScreen>
   // Handle incoming file data
   Future<void> _handleIncomingFile(List<int> fileData) async {
     try {
+      // Update transfer mode
+      setState(() {
+        _transferMode = FileTransferMode.receiving;
+      });
+
       // Get sender/client info from _expectedFile
       final senderId = _expectedFile?['fromId'] ?? 'unknown_sender';
       final fileName = _expectedFile?['filename'] ?? 'file.bin';
 
-      // Get the temp directory
-      final tempDir = await getTemporaryDirectory();
+      // Get the app documents directory
+      final documentsDir = await getApplicationDocumentsDirectory();
+      
+      // Create a 'Downloads' subfolder
+      final downloadDir = Directory('${documentsDir.path}/Downloads');
+      if (!await downloadDir.exists()) {
+        await downloadDir.create(recursive: true);
+      }
 
       // Create a subfolder for the sender/client
-      final senderDir = Directory('${tempDir.path}/$senderId');
+      final senderDir = Directory('${downloadDir.path}/$senderId');
       if (!await senderDir.exists()) {
         await senderDir.create(recursive: true);
       }
@@ -232,71 +229,129 @@ class _ShareScreenState extends State<ShareScreen>
 
       // Show success notification
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('File received from $senderId: $fileName')),
+        SnackBar(
+          content: Text('File received: $fileName'),
+          action: SnackBarAction(
+            label: 'Open',
+            onPressed: () async {
+              // Use OpenFile package to open the file
+              // You'll need to add: import 'package:open_file/open_file.dart';
+              await OpenFile.open(file.path);
+            },
+          ),
+        ),
       );
 
       // Clear the expected file metadata
       setState(() {
         _expectedFile = null;
+        // Reset transfer mode after a delay
+        Future.delayed(Duration(seconds: 2), () {
+          if (mounted) {
+            setState(() {
+              _transferMode = FileTransferMode.idle;
+            });
+          }
+        });
       });
     } catch (e) {
       print('Error saving received file: $e');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to save file: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save file: $e')),
+      );
+      
+      setState(() {
+        _transferMode = FileTransferMode.idle;
+      });
     }
   }
 
   // Add this method to send a file to another client
   Future<void> sendFileToClient(String targetId) async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles();
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,  // Allow multiple file selection
+    );
 
-    if (result != null && result.files.single.path != null) {
-      try {
-        File file = File(result.files.single.path!);
-        final fileBytes = await file.readAsBytes();
-        final fileName = result.files.single.name;
-        final fileSize = fileBytes.length;
-
-        // Show sending notification
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Sending file: $fileName')));
-
-        // Send metadata with targetId
-        _channel!.sink.add(
-          jsonEncode({
-            "type": "file_metadata",
-            "filename": fileName,
-            "size": fileSize,
-            "contentType": "application/octet-stream",
-            "targetId": targetId,
-          }),
-        );
-
-        // Listen for ready_for_file event from server
-        bool fileSent = false;
-        _channel!.stream.listen((message) {
-          if (!fileSent && message is String) {
-            final data = jsonDecode(message);
-            if (data['type'] == 'ready_for_file') {
-              // Send the actual file data
-              _channel!.sink.add(fileBytes);
-              fileSent = true;
-
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text('File sent successfully')));
-            }
+    if (result != null) {
+      // Update UI to show progress
+      setState(() {
+        _transferMode = FileTransferMode.sending;
+      });
+      
+      // Send each file
+      for (var file in result.files) {
+        if (file.path != null) {
+          try {
+            await _sendSingleFile(file, targetId);
+          } catch (e) {
+            print('Error sending file: $e');
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Failed to send ${file.name}: $e'))
+            );
           }
-        });
-      } catch (e) {
-        print('Error sending file: $e');
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to send file: $e')));
+        }
       }
+      
+      // Return to idle mode after sending
+      setState(() {
+        _transferMode = FileTransferMode.idle;
+      });
     }
+  }
+
+  Future<void> _sendSingleFile(PlatformFile fileInfo, String targetId) async {
+    File file = File(fileInfo.path!);
+    final fileBytes = await file.readAsBytes();
+    final fileName = fileInfo.name;
+    final fileSize = fileBytes.length;
+
+    // Show sending notification
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Sending file: $fileName'))
+    );
+
+    // Send metadata with targetId
+    _channel!.sink.add(jsonEncode({
+      "type": "file_metadata",
+      "filename": fileName,
+      "size": fileSize,
+      "contentType": "application/octet-stream",
+      "targetId": targetId,
+    }));
+
+    // Wait for ready_for_file event from server
+    Completer<void> sendCompleter = Completer<void>();
+    
+    StreamSubscription? subscription;
+    subscription = _broadcastStream?.listen((message) {
+      if (message is String) {
+        final data = jsonDecode(message);
+        if (data['type'] == 'ready_for_file') {
+          // Send the actual file data
+          _channel!.sink.add(fileBytes);
+          
+          // Complete after a short delay to allow the file to be sent
+          Future.delayed(Duration(milliseconds: 500), () {
+            if (!sendCompleter.isCompleted) {
+              sendCompleter.complete();
+            }
+          });
+          
+          // Cancel the subscription
+          subscription?.cancel();
+        }
+      }
+    });
+
+    // Set timeout
+    Future.delayed(Duration(seconds: 10), () {
+      if (!sendCompleter.isCompleted) {
+        sendCompleter.completeError('Timeout waiting for server response');
+        subscription?.cancel();
+      }
+    });
+
+    await sendCompleter.future;
   }
 
   // Start ping timer to keep connection alive and detect disconnection
@@ -333,7 +388,7 @@ class _ShareScreenState extends State<ShareScreen>
       body: SafeArea(
         child: Column(
           children: [
-            // Add connection status indicator bar
+            // Connection status indicator bar
             Container(
               width: double.infinity,
               padding: EdgeInsets.symmetric(vertical: 6, horizontal: 16),
@@ -357,23 +412,45 @@ class _ShareScreenState extends State<ShareScreen>
                 ],
               ),
             ),
-            // Retry connection button
-            if (!_isConnected)
+            
+            // Transfer mode indicator (only show when not idle)
+            if (_transferMode != FileTransferMode.idle)
               Container(
                 width: double.infinity,
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Center(
-                  child: ElevatedButton.icon(
-                    icon: Icon(Icons.refresh),
-                    label: Text("Retry Connection"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xFF50C2C9),
-                      foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+                color: _transferMode == FileTransferMode.sending ? 
+                      Colors.amber.shade700 : Colors.green.shade700,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _transferMode == FileTransferMode.sending ? 
+                        Icons.upload : Icons.download,
+                      color: Colors.white,
+                      size: 16,
                     ),
-                    onPressed: startScanning,
-                  ),
+                    SizedBox(width: 8),
+                    Text(
+                      _transferMode == FileTransferMode.sending ? 
+                        'Sending Mode' : 'Receiving Mode',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Spacer(),
+                    TextButton(
+                      child: Text('Cancel', style: TextStyle(color: Colors.white)),
+                      onPressed: () {
+                        setState(() {
+                          _transferMode = FileTransferMode.idle;
+                        });
+                      },
+                    )
+                  ],
                 ),
               ),
+            
             const Padding(
               padding: EdgeInsets.all(16.0),
               child: Text(
@@ -502,6 +579,27 @@ class _ShareScreenState extends State<ShareScreen>
     );
   }
 
+  // Navigate to file transfer screen
+  void navigateToFileTransfer(String deviceId) async {
+    if (_channel == null || !_isConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Please connect to the server first'))
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FileTransferScreen(
+          deviceId: deviceId,
+          channel: _channel!,
+          broadcastStream: _broadcastStream,
+        ),
+      ),
+    );
+  }
+
   // Card for connected devices
   Widget _connectedDeviceCard(Map<String, dynamic> device) {
     // Don't show our own device in the list
@@ -511,7 +609,7 @@ class _ShareScreenState extends State<ShareScreen>
 
     return Container(
       width: 330,
-      height: 260, // Made taller for the additional button
+      height: 260,
       margin: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
@@ -524,7 +622,15 @@ class _ShareScreenState extends State<ShareScreen>
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.max,
         children: [
-          Icon(Icons.devices, size: 30, color: Colors.green),
+          Icon(
+            _transferMode == FileTransferMode.sending ? Icons.upload : 
+            _transferMode == FileTransferMode.receiving ? Icons.download : 
+            Icons.devices,
+            size: 30,
+            color: _transferMode == FileTransferMode.sending ? Colors.amber : 
+                  _transferMode == FileTransferMode.receiving ? Colors.green : 
+                  Colors.white,
+          ),
           const SizedBox(height: 8),
           Text(
             device['name'] ?? 'Unknown',
@@ -542,76 +648,101 @@ class _ShareScreenState extends State<ShareScreen>
             style: TextStyle(color: Theme.of(context).colorScheme.secondary),
           ),
           const SizedBox(height: 8),
-          ElevatedButton(
-            onPressed: () async {
-              // If already connected, disconnect first
-              if (_isConnected && _channel != null) {
-                await _channel!.sink.close();
-                setState(() {
-                  _isConnected = false;
-                  _channel = null;
-                });
-              }
-
-              // Reconnect
-              final wsUrl = Uri.parse('ws://192.168.18.226:8080');
-              _channel = WebSocketChannel.connect(wsUrl);
-
-              // Recreate broadcast stream
-              _broadcastStream = _channel!.stream.asBroadcastStream();
-
-              setState(() {
-                _isConnected = true;
-              });
-
-              // Register this device again (optional, but recommended)
-              final prefs = await SharedPreferences.getInstance();
-              final deviceName = prefs.getString('device_name') ?? "G 16";
-              _channel!.sink.add(
-                jsonEncode({
-                  "type": "register_device",
-                  "deviceName": deviceName,
-                  "deviceId": _deviceId,
-                }),
-              );
-
-              // Optionally request the current list of devices again
-              _channel!.sink.add(jsonEncode({"type": "get_connected_devices"}));
-
-              // Navigate to FileTransferScreen
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder:
-                      (context) => FileTransferScreen(
-                        deviceId: device['id'],
-                        channel: _channel!,
-                        broadcastStream: _broadcastStream,
-                      ),
+          
+          // Show different buttons based on the transfer mode
+          if (_transferMode == FileTransferMode.idle) ...[
+            // Mode selection buttons
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton.icon(
+                  icon: Icon(Icons.upload, size: 16),
+                  label: Text('Send', style: TextStyle(fontSize: 12)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.amber,
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _transferMode = FileTransferMode.sending;
+                    });
+                  },
                 ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Color(0xFF50C2C9),
-              padding: EdgeInsets.symmetric(horizontal: 20),
+                SizedBox(width: 10),
+                ElevatedButton.icon(
+                  icon: Icon(Icons.download, size: 16),
+                  label: Text('Receive', style: TextStyle(fontSize: 12)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _transferMode = FileTransferMode.receiving;
+                    });
+                  },
+                ),
+              ],
             ),
-            child: Text(
-              'Connect',
-              style: TextStyle(color: Theme.of(context).colorScheme.secondary),
+            SizedBox(height: 8),
+            // Chat button
+            ElevatedButton.icon(
+              icon: Icon(Icons.chat),
+              label: Text('Chat'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Color(0xFF50C2C9),
+                padding: EdgeInsets.symmetric(horizontal: 20),
+              ),
+              onPressed: () => navigateToFileTransfer(device['id']),
             ),
-          ),
-          const SizedBox(height: 8),
-          ElevatedButton(
-            onPressed: () => sendFileToClient(device['id']),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.amber,
-              padding: EdgeInsets.symmetric(horizontal: 20),
+          ],
+          
+          // Send mode UI
+          if (_transferMode == FileTransferMode.sending) ...[
+            Text(
+              'Select files to send',
+              style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold),
             ),
-            child: Text(
-              'Send File',
-              style: TextStyle(color: Theme.of(context).colorScheme.secondary),
+            SizedBox(height: 8),
+            ElevatedButton.icon(
+              icon: Icon(Icons.attach_file),
+              label: Text('Select File'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber,
+              ),
+              onPressed: () => sendFileToClient(device['id']),
             ),
-          ),
+            SizedBox(height: 8),
+            TextButton.icon(
+              icon: Icon(Icons.cancel),
+              label: Text('Cancel'),
+              onPressed: () {
+                setState(() {
+                  _transferMode = FileTransferMode.idle;
+                });
+              },
+            ),
+          ],
+          
+          // Receive mode UI
+          if (_transferMode == FileTransferMode.receiving) ...[
+            Text(
+              'Ready to receive files',
+              style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 8),
+            Icon(Icons.download_done, size: 32, color: Colors.green),
+            SizedBox(height: 8),
+            TextButton.icon(
+              icon: Icon(Icons.cancel),
+              label: Text('Cancel'),
+              onPressed: () {
+                setState(() {
+                  _transferMode = FileTransferMode.idle;
+                });
+              },
+            ),
+          ],
         ],
       ),
     );
