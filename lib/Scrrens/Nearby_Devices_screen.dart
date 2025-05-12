@@ -50,7 +50,7 @@ class _ShareScreenState extends State<ShareScreen>
       _channel!.sink.add(
         jsonEncode({
           "type": "register_device",
-          "deviceName": "LOQ",
+          "deviceName": "Tecno",
           "deviceId": _deviceId, // Include the stored deviceId if available
         }),
       );
