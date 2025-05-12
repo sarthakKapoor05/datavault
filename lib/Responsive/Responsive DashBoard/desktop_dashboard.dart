@@ -6,6 +6,7 @@ import 'package:datavault/Scrrens/Folders/documents_screen.dart';
 import 'package:datavault/Scrrens/downloads_screen.dart';
 import 'package:datavault/Scrrens/Folders/photos_screen.dart';
 import 'package:datavault/Scrrens/Folders/videos_screen.dart';
+import 'package:datavault/Scrrens/settings_screen.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:datavault/Scrrens/folders.dart';
@@ -74,6 +75,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       'color': Colors.blue,
     },
     {'title': 'Downloads', 'icon': Icons.download, 'color': Colors.blue},
+    {'title': 'Settings', 'icon': Icons.settings, 'color': Colors.grey},
   ];
 
   @override
@@ -365,6 +367,11 @@ class _FileManagerPageState extends State<FileManagerPage> {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const DownloadsScreen()),
+          );
+        } else if (source['title'] == 'Settings') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const SettingsScreen()),
           );
         }
       },

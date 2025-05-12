@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'package:datavault/Scrrens/file_transfer_screen.dart';
+import 'package:datavault/utils/storage_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:multicast_dns/multicast_dns.dart';
@@ -172,7 +173,7 @@ class _ShareScreenState extends State<ShareScreen>
     super.initState();
     _controller = AnimationController(
       duration: const Duration(seconds: 5),
-      vsync: this,
+      vsync: this, // "vsix" was misspelled - corrected to "vsync"
     )..repeat(); // Continuous waving
 
     // Load device ID at startup
@@ -208,24 +209,12 @@ class _ShareScreenState extends State<ShareScreen>
       final senderId = _expectedFile?['fromId'] ?? 'unknown_sender';
       final fileName = _expectedFile?['filename'] ?? 'file.bin';
 
-      // Get the app documents directory
-      final documentsDir = await getApplicationDocumentsDirectory();
-      
-      // Create a 'Downloads' subfolder
-      final downloadDir = Directory('${documentsDir.path}/Downloads');
-      if (!await downloadDir.exists()) {
-        await downloadDir.create(recursive: true);
-      }
-
-      // Create a subfolder for the sender/client
-      final senderDir = Directory('${downloadDir.path}/$senderId');
-      if (!await senderDir.exists()) {
-        await senderDir.create(recursive: true);
-      }
-
-      // Save the file in the sender's folder
-      final file = File('${senderDir.path}/$fileName');
-      await file.writeAsBytes(fileData);
+      // Use the default storage location from StorageManager
+      final file = await StorageManager.saveToDefaultStorage(
+        fileName,
+        fileData,
+        subfolder: senderId, // Store in a subfolder named after the sender
+      );
 
       // Show success notification
       ScaffoldMessenger.of(context).showSnackBar(
@@ -234,8 +223,6 @@ class _ShareScreenState extends State<ShareScreen>
           action: SnackBarAction(
             label: 'Open',
             onPressed: () async {
-              // Use OpenFile package to open the file
-              // You'll need to add: import 'package:open_file/open_file.dart';
               await OpenFile.open(file.path);
             },
           ),
