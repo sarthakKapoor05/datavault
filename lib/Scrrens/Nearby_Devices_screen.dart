@@ -186,14 +186,26 @@ class _ShareScreenState extends State<ShareScreen>
   // Handle incoming file data
   Future<void> _handleIncomingFile(List<int> fileData) async {
     try {
-      // Create a file in app directory
-      final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}/${_expectedFile!['filename']}');
+      // Get sender/client info from _expectedFile
+      final senderId = _expectedFile?['fromId'] ?? 'unknown_sender';
+      final fileName = _expectedFile?['filename'] ?? 'file.bin';
+
+      // Get the temp directory
+      final tempDir = await getTemporaryDirectory();
+
+      // Create a subfolder for the sender/client
+      final senderDir = Directory('${tempDir.path}/$senderId');
+      if (!await senderDir.exists()) {
+        await senderDir.create(recursive: true);
+      }
+
+      // Save the file in the sender's folder
+      final file = File('${senderDir.path}/$fileName');
       await file.writeAsBytes(fileData);
 
       // Show success notification
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('File received: ${_expectedFile!['filename']}')),
+        SnackBar(content: Text('File received from $senderId: $fileName')),
       );
 
       // Clear the expected file metadata
