@@ -58,7 +58,7 @@ class _ShareScreenState extends State<ShareScreen>
       _channel!.sink.add(
         jsonEncode({
           "type": "register_device",
-          "deviceName": "LOQ",
+          "deviceName": "G16",
           "deviceId": _deviceId, // Include the stored deviceId if available
         }),
       );
@@ -127,10 +127,7 @@ class _ShareScreenState extends State<ShareScreen>
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Connection lost. Please reconnect.'),
-              action: SnackBarAction(
-                label: 'Retry',
-                onPressed: startScanning,
-              ),
+              action: SnackBarAction(label: 'Retry', onPressed: startScanning),
             ),
           );
         },
@@ -143,10 +140,7 @@ class _ShareScreenState extends State<ShareScreen>
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Connection closed. Please reconnect.'),
-              action: SnackBarAction(
-                label: 'Retry',
-                onPressed: startScanning,
-              ),
+              action: SnackBarAction(label: 'Retry', onPressed: startScanning),
             ),
           );
         },
