@@ -1,6 +1,4 @@
-import 'package:datavault/theme/theme_provider.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'name_edit_screen.dart'; // Import the new screen
 
@@ -34,7 +32,6 @@ class _TabletSettingState extends State<TabletSetting> {
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -84,23 +81,6 @@ class _TabletSettingState extends State<TabletSetting> {
           ),
           Divider(),
           ListTile(
-            leading: Icon(
-              Icons.brightness_6,
-              color: Theme.of(context).colorScheme.secondary,
-            ),
-            title: Text(
-              themeProvider.isDarkMode ? 'Dark Mode' : 'Light Mode',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onBackground,
-              ),
-            ),
-            trailing: Switch(
-              value: themeProvider.isDarkMode,
-              onChanged: (value) {
-                themeProvider.toggleTheme();
-              },
-              activeColor: Theme.of(context).colorScheme.secondary,
-            ),
           ),
         ],
       ),
