@@ -19,7 +19,7 @@ class MobileDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FileManagerPage();
+    return const FileManagerPage();
   }
 }
 
@@ -79,6 +79,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.background,
       appBar: AppBar(
@@ -95,13 +98,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
       ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.04),
           child: ListView(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
+                padding: EdgeInsets.symmetric(
+                  horizontal: screenWidth * 0.03,
+                  vertical: screenHeight * 0.015,
                 ),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.primary,
@@ -113,7 +116,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                       Icons.search,
                       color: Theme.of(context).colorScheme.secondary,
                     ),
-                    const SizedBox(width: 10),
+                    SizedBox(width: screenWidth * 0.025),
                     Expanded(
                       child: TextField(
                         readOnly: true,
@@ -128,15 +131,12 @@ class _FileManagerPageState extends State<FileManagerPage> {
                           ),
                           border: InputBorder.none,
                         ),
-                        onChanged: (value) {
-                          // 🔍 You can implement real-time filtering here if needed
-                        },
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
+              SizedBox(height: screenHeight * 0.02),
               GestureDetector(
                 onTap: () {
                   Navigator.push(
@@ -147,7 +147,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                   );
                 },
                 child: Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: EdgeInsets.all(screenWidth * 0.04),
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.primary,
                     borderRadius: BorderRadius.circular(12),
@@ -161,7 +161,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                           color: Theme.of(context).colorScheme.secondary,
                         ),
                       ),
-                      const SizedBox(height: 10),
+                      SizedBox(height: screenHeight * 0.01),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -175,7 +175,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      SizedBox(height: screenHeight * 0.01),
                       LinearProgressIndicator(
                         value: usedStorage / totalStorage,
                         backgroundColor: Colors.grey[700],
@@ -187,27 +187,32 @@ class _FileManagerPageState extends State<FileManagerPage> {
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
+              SizedBox(height: screenHeight * 0.025),
               GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: categories.length,
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3, // Display 3 items per row
-                  mainAxisSpacing: 12, // Vertical spacing between rows
-                  crossAxisSpacing: 12, // Horizontal spacing between items
-                  childAspectRatio: 1, // Aspect ratio for each item
+                  crossAxisCount: 3,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: 1,
                 ),
                 itemBuilder: (context, index) {
-                  return _buildCategoryCard(context, categories[index]);
+                  return _buildCategoryCard(
+                    context,
+                    categories[index],
+                    screenWidth,
+                    screenHeight,
+                  );
                 },
               ),
-              const SizedBox(height: 20),
+              SizedBox(height: screenHeight * 0.025),
               const Text(
                 'Sources',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: 10),
+              SizedBox(height: screenHeight * 0.015),
               Column(
                 children:
                     sources.map((source) => _buildSourceTile(source)).toList(),
@@ -219,7 +224,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           try {
-            // Show a dialog to let the user choose between selecting files or a folder
             final action = await showDialog<String>(
               context: context,
               builder:
@@ -236,7 +240,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                           foregroundColor:
                               Theme.of(context).colorScheme.secondary,
                         ),
-                        child: Text('Files'),
+                        child: const Text('Files'),
                       ),
                       TextButton(
                         onPressed: () => Navigator.pop(context, 'folder'),
@@ -244,34 +248,31 @@ class _FileManagerPageState extends State<FileManagerPage> {
                           foregroundColor:
                               Theme.of(context).colorScheme.secondary,
                         ),
-                        child: Text('Folder'),
+                        child: const Text('Folder'),
                       ),
                     ],
                   ),
             );
 
             if (action == 'files') {
-              // Allow the user to select multiple files
               final result = await FilePicker.platform.pickFiles(
                 allowMultiple: true,
               );
-              if (result == null) return; // User canceled the picker
+              if (result == null) return;
 
               for (var file in result.files) {
                 debugPrint('Selected file: ${file.name}');
                 openFile(file);
               }
             } else if (action == 'folder') {
-              // Allow the user to select a folder
               final directoryPath =
                   await FilePicker.platform.getDirectoryPath();
-              if (directoryPath == null) return; // User canceled the picker
+              if (directoryPath == null) return;
 
               debugPrint('Selected folder: $directoryPath');
 
-              // List the files in the selected folder
               final directory = Directory(directoryPath);
-              final files = directory.listSync(); // List all files and folders
+              final files = directory.listSync();
               for (var file in files) {
                 debugPrint('File: ${file.path}');
               }
@@ -289,51 +290,61 @@ class _FileManagerPageState extends State<FileManagerPage> {
   Widget _buildCategoryCard(
     BuildContext context,
     Map<String, dynamic> category,
+    double screenWidth,
+    double screenHeight,
   ) {
     return GestureDetector(
       onTap: () {
-        if (category['title'] == 'Photos') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const PhotosScreen()),
-          );
-        } else if (category['title'] == 'Videos') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const VideosScreen()),
-          );
-        } else if (category['title'] == 'Audio') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const AudioScreen()),
-          );
-        } else if (category['title'] == 'Documents') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const DocumentsScreen()),
-          );
-        } else if (category['title'] == 'APKs') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const ApksScreen()),
-          );
-        } else if (category['title'] == 'Archives') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const ArchivesScreen()),
-          );
+        switch (category['title']) {
+          case 'Photos':
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const PhotosScreen()),
+            );
+            break;
+          case 'Videos':
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const VideosScreen()),
+            );
+            break;
+          case 'Audio':
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AudioScreen()),
+            );
+            break;
+          case 'Documents':
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const DocumentsScreen()),
+            );
+            break;
+          case 'APKs':
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ApksScreen()),
+            );
+            break;
+          case 'Archives':
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ArchivesScreen()),
+            );
+            break;
         }
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 1),
+        padding: EdgeInsets.symmetric(
+          vertical: screenHeight * 0.02,
+          horizontal: screenWidth * 0.01,
+        ),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.primary,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
-          mainAxisAlignment:
-              MainAxisAlignment.spaceEvenly, // 👈 beautifully spread content
-
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             Icon(category['icon'], color: category['color'], size: 26),
             const SizedBox(height: 8),
@@ -355,19 +366,17 @@ class _FileManagerPageState extends State<FileManagerPage> {
   Widget _buildSourceTile(Map<String, dynamic> source) {
     return ListTile(
       leading: Icon(source['icon'], color: source['color'], size: 32),
-      title: Text(source['title'], style: const TextStyle()),
+      title: Text(source['title']),
       onTap: () {
         if (source['title'] == 'Received Files') {
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => const ReceivedFilesScreen(),
-            ),
+            MaterialPageRoute(builder: (_) => const ReceivedFilesScreen()),
           );
         } else if (source['title'] == 'Downloads') {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const DownloadsScreen()),
+            MaterialPageRoute(builder: (_) => const DownloadsScreen()),
           );
         }
       },
@@ -378,7 +387,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
   Future<Future<File>> saveFilesPermanently(PlatformFile file) async {
     final appStorage = await getApplicationDocumentsDirectory();
     final newFile = File('${appStorage.path}/${file.name}');
-
     return File(file.path!).copy(newFile.path);
   }
 
