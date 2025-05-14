@@ -33,6 +33,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
   bool isTextFieldEditable = false;
   final double usedStorage = 28;
   final double totalStorage = 128.0;
+  String? _currentStoragePath;
 
   final List<Map<String, dynamic>> categories = [
     {
@@ -77,6 +78,54 @@ class _FileManagerPageState extends State<FileManagerPage> {
     {'title': 'Downloads', 'icon': Icons.download, 'color': Colors.blue},
     {'title': 'Settings', 'icon': Icons.settings, 'color': Colors.grey},
   ];
+
+  Map<String, List<String>> categoryExtensions = {
+    'Photos': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'],
+    'Videos': ['.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv'],
+    'Audio': ['.mp3', '.wav', '.aac', '.ogg', '.flac', '.m4a'],
+    'Documents': [
+      '.pdf',
+      '.doc',
+      '.docx',
+      '.xls',
+      '.xlsx',
+      '.ppt',
+      '.pptx',
+      '.txt',
+    ],
+    'APKs': ['.apk'],
+    'Archives': ['.zip', '.rar', '.tar', '.gz', '.7z'],
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _scanAndUpdateCategories();
+  }
+
+  Future<void> _scanAndUpdateCategories() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final files = dir.listSync(recursive: true, followLinks: false);
+
+    Map<String, int> counts = {for (var key in categoryExtensions.keys) key: 0};
+
+    for (var entity in files) {
+      if (entity is File) {
+        final ext = entity.path.toLowerCase();
+        categoryExtensions.forEach((cat, exts) {
+          if (exts.any((e) => ext.endsWith(e))) {
+            counts[cat] = (counts[cat] ?? 0) + 1;
+          }
+        });
+      }
+    }
+
+    setState(() {
+      for (var cat in categories) {
+        cat['count'] = counts[cat['title']] ?? 0;
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -387,5 +436,322 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   void openFile(PlatformFile file) {
     OpenFile.open(file.path);
+  }
+}
+
+class PhotosScreen extends StatelessWidget {
+  const PhotosScreen({super.key});
+
+  Future<List<FileSystemEntity>> _getPhotoFiles() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final files =
+        dir.listSync(recursive: true, followLinks: false).where((entity) {
+          final path = entity.path.toLowerCase();
+          return entity is File &&
+              (path.endsWith('.jpg') ||
+                  path.endsWith('.jpeg') ||
+                  path.endsWith('.png') ||
+                  path.endsWith('.gif') ||
+                  path.endsWith('.bmp') ||
+                  path.endsWith('.webp'));
+        }).toList();
+    return files;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Photos')),
+      body: FutureBuilder<List<FileSystemEntity>>(
+        future: _getPhotoFiles(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text('No photos found.'));
+          }
+          final files = snapshot.data!;
+          return GridView.builder(
+            padding: const EdgeInsets.all(8),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+            ),
+            itemCount: files.length,
+            itemBuilder: (context, index) {
+              final file = files[index] as File;
+              return GestureDetector(
+                onTap: () {
+                  // Optionally, open the image in a viewer
+                },
+                child: Image.file(file, fit: BoxFit.cover),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class VideosScreen extends StatelessWidget {
+  const VideosScreen({super.key});
+
+  Future<List<FileSystemEntity>> _getVideoFiles() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final files =
+        dir.listSync(recursive: true, followLinks: false).where((entity) {
+          final path = entity.path.toLowerCase();
+          return entity is File &&
+              (path.endsWith('.mp4') ||
+                  path.endsWith('.avi') ||
+                  path.endsWith('.mov') ||
+                  path.endsWith('.mkv') ||
+                  path.endsWith('.flv') ||
+                  path.endsWith('.wmv'));
+        }).toList();
+    return files;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Videos')),
+      body: FutureBuilder<List<FileSystemEntity>>(
+        future: _getVideoFiles(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text('No videos found.'));
+          }
+          final files = snapshot.data!;
+          return ListView.builder(
+            itemCount: files.length,
+            itemBuilder: (context, index) {
+              final file = files[index] as File;
+              final fileName = file.path.split(Platform.pathSeparator).last;
+              return ListTile(
+                leading: const Icon(Icons.videocam),
+                title: Text(fileName),
+                onTap: () {
+                  // Optionally, open the video file
+                },
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class AudioScreen extends StatelessWidget {
+  const AudioScreen({super.key});
+
+  Future<List<FileSystemEntity>> _getAudioFiles() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final files =
+        dir.listSync(recursive: true, followLinks: false).where((entity) {
+          final path = entity.path.toLowerCase();
+          return entity is File &&
+              (path.endsWith('.mp3') ||
+                  path.endsWith('.wav') ||
+                  path.endsWith('.aac') ||
+                  path.endsWith('.ogg') ||
+                  path.endsWith('.flac') ||
+                  path.endsWith('.m4a'));
+        }).toList();
+    return files;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Audio')),
+      body: FutureBuilder<List<FileSystemEntity>>(
+        future: _getAudioFiles(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text('No audio files found.'));
+          }
+          final files = snapshot.data!;
+          return ListView.builder(
+            itemCount: files.length,
+            itemBuilder: (context, index) {
+              final file = files[index] as File;
+              final fileName = file.path.split(Platform.pathSeparator).last;
+              return ListTile(
+                leading: const Icon(Icons.music_note),
+                title: Text(fileName),
+                onTap: () {
+                  // Optionally, open the audio file
+                },
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class DocumentsScreen extends StatelessWidget {
+  const DocumentsScreen({super.key});
+
+  Future<List<FileSystemEntity>> _getDocumentFiles() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final files =
+        dir.listSync(recursive: true, followLinks: false).where((entity) {
+          final path = entity.path.toLowerCase();
+          return entity is File &&
+              (path.endsWith('.pdf') ||
+                  path.endsWith('.doc') ||
+                  path.endsWith('.docx') ||
+                  path.endsWith('.xls') ||
+                  path.endsWith('.xlsx') ||
+                  path.endsWith('.ppt') ||
+                  path.endsWith('.pptx') ||
+                  path.endsWith('.txt'));
+        }).toList();
+    return files;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Documents')),
+      body: FutureBuilder<List<FileSystemEntity>>(
+        future: _getDocumentFiles(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text('No documents found.'));
+          }
+          final files = snapshot.data!;
+          return ListView.builder(
+            itemCount: files.length,
+            itemBuilder: (context, index) {
+              final file = files[index] as File;
+              final fileName = file.path.split(Platform.pathSeparator).last;
+              return ListTile(
+                leading: const Icon(Icons.insert_drive_file),
+                title: Text(fileName),
+                onTap: () {
+                  // Optionally, open the document file
+                },
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class ApksScreen extends StatelessWidget {
+  const ApksScreen({super.key});
+
+  Future<List<FileSystemEntity>> _getApkFiles() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final files =
+        dir.listSync(recursive: true, followLinks: false).where((entity) {
+          final path = entity.path.toLowerCase();
+          return entity is File && path.endsWith('.apk');
+        }).toList();
+    return files;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('APKs')),
+      body: FutureBuilder<List<FileSystemEntity>>(
+        future: _getApkFiles(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text('No APKs found.'));
+          }
+          final files = snapshot.data!;
+          return ListView.builder(
+            itemCount: files.length,
+            itemBuilder: (context, index) {
+              final file = files[index] as File;
+              final fileName = file.path.split(Platform.pathSeparator).last;
+              return ListTile(
+                leading: const Icon(Icons.android),
+                title: Text(fileName),
+                onTap: () {
+                  // Optionally, open the APK file
+                },
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class ArchivesScreen extends StatelessWidget {
+  const ArchivesScreen({super.key});
+
+  Future<List<FileSystemEntity>> _getArchiveFiles() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final files =
+        dir.listSync(recursive: true, followLinks: false).where((entity) {
+          final path = entity.path.toLowerCase();
+          return entity is File &&
+              (path.endsWith('.zip') ||
+                  path.endsWith('.rar') ||
+                  path.endsWith('.tar') ||
+                  path.endsWith('.gz') ||
+                  path.endsWith('.7z'));
+        }).toList();
+    return files;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Archives')),
+      body: FutureBuilder<List<FileSystemEntity>>(
+        future: _getArchiveFiles(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text('No archives found.'));
+          }
+          final files = snapshot.data!;
+          return ListView.builder(
+            itemCount: files.length,
+            itemBuilder: (context, index) {
+              final file = files[index] as File;
+              final fileName = file.path.split(Platform.pathSeparator).last;
+              return ListTile(
+                leading: const Icon(Icons.archive),
+                title: Text(fileName),
+                onTap: () {
+                  // Optionally, open the archive file
+                },
+              );
+            },
+          );
+        },
+      ),
+    );
   }
 }
