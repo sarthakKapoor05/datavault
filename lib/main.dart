@@ -1,23 +1,15 @@
 import 'package:datavault/Scrrens/pin_page.dart';
-import 'package:datavault/theme/theme_provider.dart';
+import 'package:datavault/theme/theme.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_size/window_size.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  setWindowMinSize(const Size(600, 800));
   SharedPreferences prefs = await SharedPreferences.getInstance();
   String? savedPin = prefs.getString('userPin');
-  runApp(
-    ChangeNotifierProvider(
-      create: (context) => ThemeProvider(),
-      child: MyApp(savedPin: savedPin),
-    ),
-  );
-  WidgetsFlutterBinding.ensureInitialized();
-
-  setWindowMinSize(const Size(600, 800));
+  runApp(MyApp(savedPin: savedPin));
 }
 
 class MyApp extends StatelessWidget {
@@ -29,7 +21,8 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       home: savedPin == null ? SetPinPage() : PinCheckPage(),
-      theme: Provider.of<ThemeProvider>(context).themeData,
+      theme: lightMode,
+      darkTheme: darkMode,
     );
   }
 }

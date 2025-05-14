@@ -9,7 +9,7 @@ ThemeData lightMode = ThemeData(
   ),
 );
 
-ThemeData dartMode = ThemeData(
+ThemeData darkMode = ThemeData(
   brightness: Brightness.dark,
   colorScheme: ColorScheme.dark(
     background: Colors.black,
