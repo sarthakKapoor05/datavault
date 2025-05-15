@@ -279,6 +279,9 @@ class _ShareScreenState extends State<ShareScreen>
     File file = File(fileInfo.path!);
     final fileBytes = await file.readAsBytes();
     final encryptedBytes = encryptFileBytes(fileBytes);
+    // Send encryptedBytes instead of fileBytes
+    _channel!.sink.add(encryptedBytes);
+
     final fileName = fileInfo.name;
     final fileSize = fileBytes.length;
 
@@ -292,7 +295,7 @@ class _ShareScreenState extends State<ShareScreen>
       jsonEncode({
         "type": "file_metadata",
         "filename": fileName,
-        "size": fileSize,
+        "size": encryptedBytes.length,
         "contentType": "application/octet-stream",
         "targetId": targetId,
       }),
@@ -307,7 +310,7 @@ class _ShareScreenState extends State<ShareScreen>
         final data = jsonDecode(message);
         if (data['type'] == 'ready_for_file') {
           // Send the actual file data
-          _channel!.sink.add(encryptedBytes);
+          _channel!.sink.add(fileBytes);
 
           // Complete after a short delay to allow the file to be sent
           Future.delayed(Duration(milliseconds: 500), () {
@@ -795,17 +798,24 @@ class _ShareScreenState extends State<ShareScreen>
   }
 }
 
-final _encryptionKey = encrypt.Key.fromUtf8('my32lengthsupersecretnooneknows!');
-final _iv = encrypt.IV.fromLength(16);
+// Use a secure key in production!
+final _encryptionKey = encrypt.Key.fromUtf8(
+  'my32lengthsupersecretnooneknows!',
+); // 32 chars
+final _iv = encrypt.IV.fromUtf8('my16byteslongiv!!'); // 16 chars
 
 List<int> encryptFileBytes(List<int> bytes) {
-  final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
+  final encrypter = encrypt.Encrypter(
+    encrypt.AES(_encryptionKey, mode: encrypt.AESMode.cbc),
+  );
   final encrypted = encrypter.encryptBytes(bytes, iv: _iv);
   return encrypted.bytes;
 }
 
 List<int> decryptFileBytes(List<int> encryptedBytes) {
-  final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
+  final encrypter = encrypt.Encrypter(
+    encrypt.AES(_encryptionKey, mode: encrypt.AESMode.cbc),
+  );
   final encrypted = encrypt.Encrypted(Uint8List.fromList(encryptedBytes));
   return encrypter.decryptBytes(encrypted, iv: _iv);
 }
