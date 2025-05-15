@@ -535,10 +535,10 @@ class VideosScreen extends StatelessWidget {
               final file = files[index] as File;
               final fileName = file.path.split(Platform.pathSeparator).last;
               return ListTile(
-                leading: const Icon(Icons.videocam),
+                leading: const Icon(Icons.videocam), // or appropriate icon
                 title: Text(fileName),
                 onTap: () {
-                  // Optionally, open the video file
+                  openFileByPath(file.path);
                 },
               );
             },
