@@ -34,7 +34,7 @@ class _ShareScreenState extends State<ShareScreen>
       // Close existing connection if any
       if (_channel != null) {
         await _channel?.sink.close();
-      }
+      } 
 
       // Connect to local WebSocket server on port 8080
       final wsUrl = Uri.parse('ws://192.168.18.27:8080');
