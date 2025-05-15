@@ -4,6 +4,7 @@ import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:local_auth/local_auth.dart';
 import 'dart:io' show Platform;
+import 'package:flutter/services.dart';
 
 final logger = Logger();
 
@@ -110,11 +111,42 @@ class EnterPinPage extends StatefulWidget {
 class EnterPinPageState extends State<EnterPinPage> {
   String enteredPin = "";
   final LocalAuthentication auth = LocalAuthentication();
+  final FocusNode _focusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
-    _authenticate(); // Call biometric on start (optional)
+    _authenticate();
+    // Request focus when the page loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _onKeyFromKeyboard(RawKeyEvent event) {
+    if (event is RawKeyDownEvent) {
+      final key = event.logicalKey.keyLabel;
+      if (RegExp(r'^[0-9]$').hasMatch(key)) {
+        if (enteredPin.length < 4) {
+          setState(() {
+            enteredPin += key;
+          });
+          if (enteredPin.length == 4) _checkPin();
+        }
+      } else if (event.logicalKey == LogicalKeyboardKey.backspace) {
+        if (enteredPin.isNotEmpty) {
+          setState(() {
+            enteredPin = enteredPin.substring(0, enteredPin.length - 1);
+          });
+        }
+      }
+    }
   }
 
   Future<void> _authenticate() async {
@@ -237,21 +269,26 @@ class EnterPinPageState extends State<EnterPinPage> {
         backgroundColor: Theme.of(context).colorScheme.primary,
       ),
       backgroundColor: Theme.of(context).colorScheme.primary,
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          PinCircles(pinLength: enteredPin.length),
-          Keypad(onKeyPressed: _onKeyPressed),
-          IconButton(
-            icon: Icon(
-              Icons.fingerprint,
-              size: 40,
-              color: Colors.blueGrey[600],
+      body: RawKeyboardListener(
+        focusNode: _focusNode,
+        autofocus: true,
+        onKey: _onKeyFromKeyboard,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            PinCircles(pinLength: enteredPin.length),
+            Keypad(onKeyPressed: _onKeyPressed),
+            IconButton(
+              icon: Icon(
+                Icons.fingerprint,
+                size: 40,
+                color: Colors.blueGrey[600],
+              ),
+              onPressed: _authenticate,
             ),
-            onPressed: _authenticate,
-          ),
-          _buildForgotPin(),
-        ],
+            _buildForgotPin(),
+          ],
+        ),
       ),
     );
   }
