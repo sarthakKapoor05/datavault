@@ -5,14 +5,10 @@ import 'package:datavault/Scrrens/file_transfer_screen.dart';
 import 'package:datavault/utils/storage_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:multicast_dns/multicast_dns.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart'; // Add this package
 import 'package:open_file/open_file.dart';
-import 'package:encrypt/encrypt.dart' as encrypt;
-import 'dart:typed_data';
 
 enum FileTransferMode { idle, sending, receiving }
 
@@ -56,7 +52,7 @@ class _ShareScreenState extends State<ShareScreen>
       _channel!.sink.add(
         jsonEncode({
           "type": "register_device",
-          "deviceName": "LOQ",
+          "deviceName": "G16",
           "deviceId": _deviceId, // Include the stored deviceId if available
         }),
       );
@@ -190,37 +186,56 @@ class _ShareScreenState extends State<ShareScreen>
   // Handle incoming file data
   Future<void> _handleIncomingFile(List<int> fileData) async {
     try {
-      // Decrypt the received file bytes
-      final decryptedBytes = decryptFileBytes(fileData);
+      // Update transfer mode
+      setState(() {
+        _transferMode = FileTransferMode.receiving;
+      });
 
-      // Save the decrypted file
+      // Get sender/client info from _expectedFile
       final senderId = _expectedFile?['fromId'] ?? 'unknown_sender';
       final fileName = _expectedFile?['filename'] ?? 'file.bin';
 
-      final tempDir = await getTemporaryDirectory();
-      final senderDir = Directory('${tempDir.path}/$senderId');
-      if (!await senderDir.exists()) {
-        await senderDir.create(recursive: true);
-      }
-
-      final file = File('${senderDir.path}/$fileName');
-      await file.writeAsBytes(
-        Uint8List.fromList(decryptedBytes),
-      ); // <-- Fix: ensure Uint8List
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('File received and decrypted: $fileName')),
+      // Use the default storage location from StorageManager
+      final file = await StorageManager.saveToDefaultStorage(
+        fileName,
+        fileData,
+        subfolder: senderId, // Store in a subfolder named after the sender
       );
 
+      // Show success notification
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('File received: $fileName'),
+          action: SnackBarAction(
+            label: 'Open',
+            onPressed: () async {
+              await OpenFile.open(file.path);
+            },
+          ),
+        ),
+      );
+
+      // Clear the expected file metadata
       setState(() {
         _expectedFile = null;
-        // Optionally reset transfer mode here
+        // Reset transfer mode after a delay
+        Future.delayed(Duration(seconds: 2), () {
+          if (mounted) {
+            setState(() {
+              _transferMode = FileTransferMode.idle;
+            });
+          }
+        });
       });
     } catch (e) {
       print('Error saving received file: $e');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to save file: $e')));
+
+      setState(() {
+        _transferMode = FileTransferMode.idle;
+      });
     }
   }
 
@@ -260,12 +275,8 @@ class _ShareScreenState extends State<ShareScreen>
   Future<void> _sendSingleFile(PlatformFile fileInfo, String targetId) async {
     File file = File(fileInfo.path!);
     final fileBytes = await file.readAsBytes();
-
-    // Encrypt the file bytes before sending
-    final encryptedBytes = encryptFileBytes(fileBytes);
-
     final fileName = fileInfo.name;
-    final fileSize = encryptedBytes.length;
+    final fileSize = fileBytes.length;
 
     // Show sending notification
     ScaffoldMessenger.of(
@@ -291,8 +302,8 @@ class _ShareScreenState extends State<ShareScreen>
       if (message is String) {
         final data = jsonDecode(message);
         if (data['type'] == 'ready_for_file') {
-          // Send the actual encrypted file data
-          _channel!.sink.add(encryptedBytes);
+          // Send the actual file data
+          _channel!.sink.add(fileBytes);
 
           // Complete after a short delay to allow the file to be sent
           Future.delayed(Duration(milliseconds: 500), () {
@@ -779,23 +790,3 @@ class _ShareScreenState extends State<ShareScreen>
     );
   }
 }
-
-// Remove these encryption/decryption helpers and key/iv definitions:
-
-// final _encryptionKey = encrypt.Key.fromUtf8(
-//   'my32lengthsupersecretnooneknows!',
-// ); // 32 chars for AES-256
-// final _iv = encrypt.IV.fromLength(16);
-
-// List<int> encryptFileBytes(List<int> bytes) {
-//   final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
-//   final encrypted = encrypter.encryptBytes(bytes, iv: _iv);
-//   return encrypted.bytes;
-// }
-
-// List<int> decryptFileBytes(List<int> encryptedBytes) {
-//   final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
-//   final encrypted = encrypt.Encrypted(Uint8List.fromList(encryptedBytes));
-//   final decrypted = encrypter.decryptBytes(encrypted, iv: _iv);
-//   return decrypted;
-// }
