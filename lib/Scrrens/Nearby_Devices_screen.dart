@@ -5,6 +5,8 @@ import 'package:datavault/Scrrens/file_transfer_screen.dart';
 import 'package:datavault/utils/storage_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:multicast_dns/multicast_dns.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart'; // Add this package
@@ -52,7 +54,7 @@ class _ShareScreenState extends State<ShareScreen>
       _channel!.sink.add(
         jsonEncode({
           "type": "register_device",
-          "deviceName": "Tecno",
+          "deviceName": "LOQ",
           "deviceId": _deviceId, // Include the stored deviceId if available
         }),
       );
