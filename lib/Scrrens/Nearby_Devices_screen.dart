@@ -9,6 +9,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart'; // Add this package
 import 'package:open_file/open_file.dart';
+import 'package:encrypt/encrypt.dart' as encrypt;
+import 'dart:typed_data';
 
 enum FileTransferMode { idle, sending, receiving }
 
@@ -34,7 +36,7 @@ class _ShareScreenState extends State<ShareScreen>
       // Close existing connection if any
       if (_channel != null) {
         await _channel?.sink.close();
-      } 
+      }
 
       // Connect to local WebSocket server on port 8080
       final wsUrl = Uri.parse('ws://192.168.18.27:8080');
@@ -196,10 +198,11 @@ class _ShareScreenState extends State<ShareScreen>
       final fileName = _expectedFile?['filename'] ?? 'file.bin';
 
       // Use the default storage location from StorageManager
+      final decryptedBytes = decryptFileBytes(fileData);
       final file = await StorageManager.saveToDefaultStorage(
         fileName,
-        fileData,
-        subfolder: senderId, // Store in a subfolder named after the sender
+        Uint8List.fromList(decryptedBytes),
+        subfolder: senderId,
       );
 
       // Show success notification
@@ -275,6 +278,7 @@ class _ShareScreenState extends State<ShareScreen>
   Future<void> _sendSingleFile(PlatformFile fileInfo, String targetId) async {
     File file = File(fileInfo.path!);
     final fileBytes = await file.readAsBytes();
+    final encryptedBytes = encryptFileBytes(fileBytes);
     final fileName = fileInfo.name;
     final fileSize = fileBytes.length;
 
@@ -303,7 +307,7 @@ class _ShareScreenState extends State<ShareScreen>
         final data = jsonDecode(message);
         if (data['type'] == 'ready_for_file') {
           // Send the actual file data
-          _channel!.sink.add(fileBytes);
+          _channel!.sink.add(encryptedBytes);
 
           // Complete after a short delay to allow the file to be sent
           Future.delayed(Duration(milliseconds: 500), () {
@@ -789,4 +793,19 @@ class _ShareScreenState extends State<ShareScreen>
       ),
     );
   }
+}
+
+final _encryptionKey = encrypt.Key.fromUtf8('my32lengthsupersecretnooneknows!');
+final _iv = encrypt.IV.fromLength(16);
+
+List<int> encryptFileBytes(List<int> bytes) {
+  final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
+  final encrypted = encrypter.encryptBytes(bytes, iv: _iv);
+  return encrypted.bytes;
+}
+
+List<int> decryptFileBytes(List<int> encryptedBytes) {
+  final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
+  final encrypted = encrypt.Encrypted(Uint8List.fromList(encryptedBytes));
+  return encrypter.decryptBytes(encrypted, iv: _iv);
 }
