@@ -12,6 +12,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart'; // Add this package
 import 'package:open_file/open_file.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
+import 'dart:typed_data';
 
 enum FileTransferMode { idle, sending, receiving }
 
@@ -55,7 +56,7 @@ class _ShareScreenState extends State<ShareScreen>
       _channel!.sink.add(
         jsonEncode({
           "type": "register_device",
-          "deviceName": "LOQ",
+          "deviceName": "G 16",
           "deviceId": _deviceId, // Include the stored deviceId if available
         }),
       );
@@ -198,11 +199,14 @@ class _ShareScreenState extends State<ShareScreen>
       final senderId = _expectedFile?['fromId'] ?? 'unknown_sender';
       final fileName = _expectedFile?['filename'] ?? 'file.bin';
 
+      // Decrypt the received file bytes
+      final decryptedBytes = decryptFileBytes(fileData);
+
       // Use the default storage location from StorageManager
       final file = await StorageManager.saveToDefaultStorage(
         fileName,
-        fileData,
-        subfolder: senderId, // Store in a subfolder named after the sender
+        Uint8List.fromList(decryptedBytes),
+        subfolder: senderId,
       );
 
       // Show success notification
@@ -808,4 +812,11 @@ List<int> encryptFileBytes(List<int> bytes) {
   final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
   final encrypted = encrypter.encryptBytes(bytes, iv: _iv);
   return encrypted.bytes;
+}
+
+List<int> decryptFileBytes(List<int> encryptedBytes) {
+  final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
+  final encrypted = encrypt.Encrypted(Uint8List.fromList(encryptedBytes));
+  final decrypted = encrypter.decryptBytes(encrypted, iv: _iv);
+  return decrypted;
 }
