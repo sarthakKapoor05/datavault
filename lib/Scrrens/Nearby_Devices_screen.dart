@@ -2,20 +2,15 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'package:datavault/Scrrens/file_transfer_screen.dart';
+import 'package:datavault/utils/storage_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:multicast_dns/multicast_dns.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart'; // Add this package
 import 'package:open_file/open_file.dart';
 
-enum FileTransferMode {
-  idle,
-  sending,
-  receiving
-}
+enum FileTransferMode { idle, sending, receiving }
 
 class ShareScreen extends StatefulWidget {
   @override
@@ -152,9 +147,7 @@ class _ShareScreenState extends State<ShareScreen>
     }
   }
 
-  final List<Map<String, String>> recentDevices = [
-    
-  ];
+  final List<Map<String, String>> recentDevices = [];
 
   late AnimationController _controller;
 
@@ -166,7 +159,7 @@ class _ShareScreenState extends State<ShareScreen>
     super.initState();
     _controller = AnimationController(
       duration: const Duration(seconds: 5),
-      vsync: this,
+      vsync: this, // "vsix" was misspelled - corrected to "vsync"
     )..repeat(); // Continuous waving
 
     // Load device ID at startup
@@ -202,24 +195,12 @@ class _ShareScreenState extends State<ShareScreen>
       final senderId = _expectedFile?['fromId'] ?? 'unknown_sender';
       final fileName = _expectedFile?['filename'] ?? 'file.bin';
 
-      // Get the app documents directory
-      final documentsDir = await getApplicationDocumentsDirectory();
-      
-      // Create a 'Downloads' subfolder
-      final downloadDir = Directory('${documentsDir.path}/Downloads');
-      if (!await downloadDir.exists()) {
-        await downloadDir.create(recursive: true);
-      }
-
-      // Create a subfolder for the sender/client
-      final senderDir = Directory('${downloadDir.path}/$senderId');
-      if (!await senderDir.exists()) {
-        await senderDir.create(recursive: true);
-      }
-
-      // Save the file in the sender's folder
-      final file = File('${senderDir.path}/$fileName');
-      await file.writeAsBytes(fileData);
+      // Use the default storage location from StorageManager
+      final file = await StorageManager.saveToDefaultStorage(
+        fileName,
+        fileData,
+        subfolder: senderId, // Store in a subfolder named after the sender
+      );
 
       // Show success notification
       ScaffoldMessenger.of(context).showSnackBar(
@@ -228,8 +209,6 @@ class _ShareScreenState extends State<ShareScreen>
           action: SnackBarAction(
             label: 'Open',
             onPressed: () async {
-              // Use OpenFile package to open the file
-              // You'll need to add: import 'package:open_file/open_file.dart';
               await OpenFile.open(file.path);
             },
           ),
@@ -250,10 +229,10 @@ class _ShareScreenState extends State<ShareScreen>
       });
     } catch (e) {
       print('Error saving received file: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save file: $e')),
-      );
-      
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to save file: $e')));
+
       setState(() {
         _transferMode = FileTransferMode.idle;
       });
@@ -263,7 +242,7 @@ class _ShareScreenState extends State<ShareScreen>
   // Add this method to send a file to another client
   Future<void> sendFileToClient(String targetId) async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
-      allowMultiple: true,  // Allow multiple file selection
+      allowMultiple: true, // Allow multiple file selection
     );
 
     if (result != null) {
@@ -271,7 +250,7 @@ class _ShareScreenState extends State<ShareScreen>
       setState(() {
         _transferMode = FileTransferMode.sending;
       });
-      
+
       // Send each file
       for (var file in result.files) {
         if (file.path != null) {
@@ -280,12 +259,12 @@ class _ShareScreenState extends State<ShareScreen>
           } catch (e) {
             print('Error sending file: $e');
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Failed to send ${file.name}: $e'))
+              SnackBar(content: Text('Failed to send ${file.name}: $e')),
             );
           }
         }
       }
-      
+
       // Return to idle mode after sending
       setState(() {
         _transferMode = FileTransferMode.idle;
@@ -300,22 +279,24 @@ class _ShareScreenState extends State<ShareScreen>
     final fileSize = fileBytes.length;
 
     // Show sending notification
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Sending file: $fileName'))
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Sending file: $fileName')));
 
     // Send metadata with targetId
-    _channel!.sink.add(jsonEncode({
-      "type": "file_metadata",
-      "filename": fileName,
-      "size": fileSize,
-      "contentType": "application/octet-stream",
-      "targetId": targetId,
-    }));
+    _channel!.sink.add(
+      jsonEncode({
+        "type": "file_metadata",
+        "filename": fileName,
+        "size": fileSize,
+        "contentType": "application/octet-stream",
+        "targetId": targetId,
+      }),
+    );
 
     // Wait for ready_for_file event from server
     Completer<void> sendCompleter = Completer<void>();
-    
+
     StreamSubscription? subscription;
     subscription = _broadcastStream?.listen((message) {
       if (message is String) {
@@ -323,14 +304,14 @@ class _ShareScreenState extends State<ShareScreen>
         if (data['type'] == 'ready_for_file') {
           // Send the actual file data
           _channel!.sink.add(fileBytes);
-          
+
           // Complete after a short delay to allow the file to be sent
           Future.delayed(Duration(milliseconds: 500), () {
             if (!sendCompleter.isCompleted) {
               sendCompleter.complete();
             }
           });
-          
+
           // Cancel the subscription
           subscription?.cancel();
         }
@@ -406,27 +387,31 @@ class _ShareScreenState extends State<ShareScreen>
                 ],
               ),
             ),
-            
+
             // Transfer mode indicator (only show when not idle)
             if (_transferMode != FileTransferMode.idle)
               Container(
                 width: double.infinity,
                 padding: EdgeInsets.symmetric(vertical: 4, horizontal: 16),
-                color: _transferMode == FileTransferMode.sending ? 
-                      Colors.amber.shade700 : Colors.green.shade700,
+                color:
+                    _transferMode == FileTransferMode.sending
+                        ? Colors.amber.shade700
+                        : Colors.green.shade700,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      _transferMode == FileTransferMode.sending ? 
-                        Icons.upload : Icons.download,
+                      _transferMode == FileTransferMode.sending
+                          ? Icons.upload
+                          : Icons.download,
                       color: Colors.white,
                       size: 16,
                     ),
                     SizedBox(width: 8),
                     Text(
-                      _transferMode == FileTransferMode.sending ? 
-                        'Sending Mode' : 'Receiving Mode',
+                      _transferMode == FileTransferMode.sending
+                          ? 'Sending Mode'
+                          : 'Receiving Mode',
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -434,17 +419,20 @@ class _ShareScreenState extends State<ShareScreen>
                     ),
                     Spacer(),
                     TextButton(
-                      child: Text('Cancel', style: TextStyle(color: Colors.white)),
+                      child: Text(
+                        'Cancel',
+                        style: TextStyle(color: Colors.white),
+                      ),
                       onPressed: () {
                         setState(() {
                           _transferMode = FileTransferMode.idle;
                         });
                       },
-                    )
+                    ),
                   ],
                 ),
               ),
-            
+
             const Padding(
               padding: EdgeInsets.all(16.0),
               child: Text(
@@ -512,7 +500,8 @@ class _ShareScreenState extends State<ShareScreen>
             ),
             // Display connected clients section
             if (_connectedClients.isNotEmpty)
-              Expanded(
+              Padding(
+                padding: const EdgeInsets.only(top: 8.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -527,8 +516,9 @@ class _ShareScreenState extends State<ShareScreen>
                         ),
                       ),
                     ),
-                    SizedBox(height: 8),
-                    Flexible(
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 260, // Set this to the height of your device card
                       child: ListView.builder(
                         scrollDirection: Axis.horizontal,
                         itemCount: _connectedClients.length,
@@ -577,7 +567,7 @@ class _ShareScreenState extends State<ShareScreen>
   void navigateToFileTransfer(String deviceId) async {
     if (_channel == null || !_isConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please connect to the server first'))
+        SnackBar(content: Text('Please connect to the server first')),
       );
       return;
     }
@@ -585,11 +575,12 @@ class _ShareScreenState extends State<ShareScreen>
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => FileTransferScreen(
-          deviceId: deviceId,
-          channel: _channel!,
-          broadcastStream: _broadcastStream,
-        ),
+        builder:
+            (context) => FileTransferScreen(
+              deviceId: deviceId,
+              channel: _channel!,
+              broadcastStream: _broadcastStream,
+            ),
       ),
     );
   }
@@ -617,13 +608,18 @@ class _ShareScreenState extends State<ShareScreen>
         mainAxisSize: MainAxisSize.max,
         children: [
           Icon(
-            _transferMode == FileTransferMode.sending ? Icons.upload : 
-            _transferMode == FileTransferMode.receiving ? Icons.download : 
-            Icons.devices,
+            _transferMode == FileTransferMode.sending
+                ? Icons.upload
+                : _transferMode == FileTransferMode.receiving
+                ? Icons.download
+                : Icons.devices,
             size: 30,
-            color: _transferMode == FileTransferMode.sending ? Colors.amber : 
-                  _transferMode == FileTransferMode.receiving ? Colors.green : 
-                  Colors.white,
+            color:
+                _transferMode == FileTransferMode.sending
+                    ? Colors.amber
+                    : _transferMode == FileTransferMode.receiving
+                    ? Colors.green
+                    : Colors.white,
           ),
           const SizedBox(height: 8),
           Text(
@@ -642,7 +638,7 @@ class _ShareScreenState extends State<ShareScreen>
             style: TextStyle(color: Theme.of(context).colorScheme.secondary),
           ),
           const SizedBox(height: 8),
-          
+
           // Show different buttons based on the transfer mode
           if (_transferMode == FileTransferMode.idle) ...[
             // Mode selection buttons
@@ -690,20 +686,21 @@ class _ShareScreenState extends State<ShareScreen>
               onPressed: () => navigateToFileTransfer(device['id']),
             ),
           ],
-          
+
           // Send mode UI
           if (_transferMode == FileTransferMode.sending) ...[
             Text(
               'Select files to send',
-              style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Colors.amber,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             SizedBox(height: 8),
             ElevatedButton.icon(
               icon: Icon(Icons.attach_file),
               label: Text('Select File'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber,
-              ),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
               onPressed: () => sendFileToClient(device['id']),
             ),
             SizedBox(height: 8),
@@ -717,12 +714,15 @@ class _ShareScreenState extends State<ShareScreen>
               },
             ),
           ],
-          
+
           // Receive mode UI
           if (_transferMode == FileTransferMode.receiving) ...[
             Text(
               'Ready to receive files',
-              style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Colors.green,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             SizedBox(height: 8),
             Icon(Icons.download_done, size: 32, color: Colors.green),

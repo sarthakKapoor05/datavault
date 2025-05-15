@@ -85,9 +85,9 @@ class SetPinPageState extends State<SetPinPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Set Your PIN'),
-        backgroundColor: Colors.blueGrey[600],
+        backgroundColor: Theme.of(context).colorScheme.primary,
       ),
-      backgroundColor: Colors.grey[300],
+      backgroundColor: Theme.of(context).colorScheme.primary,
       body: Column(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
@@ -195,14 +195,24 @@ class EnterPinPageState extends State<EnterPinPage> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text("Cancel"),
+                child: Text(
+                  "Cancel",
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.secondary,
+                  ),
+                ),
               ),
               TextButton(
                 onPressed: () {
                   Navigator.pop(context);
                   _resetPin();
                 },
-                child: const Text("Reset"),
+                child: Text(
+                  "Reset",
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.secondary,
+                  ),
+                ),
               ),
             ],
           ),
@@ -224,9 +234,9 @@ class EnterPinPageState extends State<EnterPinPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Enter Your PIN'),
-        backgroundColor: Colors.blueGrey[600],
+        backgroundColor: Theme.of(context).colorScheme.primary,
       ),
-      backgroundColor: Colors.grey[300],
+      backgroundColor: Theme.of(context).colorScheme.primary,
       body: Column(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
@@ -265,8 +275,8 @@ class PinCircles extends StatelessWidget {
             shape: BoxShape.circle,
             color:
                 i < pinLength
-                    ? Colors.blueGrey[600]
-                    : const Color.fromARGB(255, 199, 199, 199),
+                    ? Colors.green.shade700
+                    : Theme.of(context).colorScheme.secondary,
           ),
         ),
       ),
