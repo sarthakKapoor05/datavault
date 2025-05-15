@@ -11,6 +11,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart'; // Add this package
 import 'package:open_file/open_file.dart';
+import 'package:encrypt/encrypt.dart' as encrypt;
 
 enum FileTransferMode { idle, sending, receiving }
 
@@ -277,8 +278,12 @@ class _ShareScreenState extends State<ShareScreen>
   Future<void> _sendSingleFile(PlatformFile fileInfo, String targetId) async {
     File file = File(fileInfo.path!);
     final fileBytes = await file.readAsBytes();
+
+    // Encrypt the file bytes before sending
+    final encryptedBytes = encryptFileBytes(fileBytes);
+
     final fileName = fileInfo.name;
-    final fileSize = fileBytes.length;
+    final fileSize = encryptedBytes.length;
 
     // Show sending notification
     ScaffoldMessenger.of(
@@ -304,8 +309,8 @@ class _ShareScreenState extends State<ShareScreen>
       if (message is String) {
         final data = jsonDecode(message);
         if (data['type'] == 'ready_for_file') {
-          // Send the actual file data
-          _channel!.sink.add(fileBytes);
+          // Send the actual encrypted file data
+          _channel!.sink.add(encryptedBytes);
 
           // Complete after a short delay to allow the file to be sent
           Future.delayed(Duration(milliseconds: 500), () {
@@ -791,4 +796,16 @@ class _ShareScreenState extends State<ShareScreen>
       ),
     );
   }
+}
+
+// You should store this key securely!
+final _encryptionKey = encrypt.Key.fromUtf8(
+  'my32lengthsupersecretnooneknows!',
+); // 32 chars for AES-256
+final _iv = encrypt.IV.fromLength(16);
+
+List<int> encryptFileBytes(List<int> bytes) {
+  final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
+  final encrypted = encrypter.encryptBytes(bytes, iv: _iv);
+  return encrypted.bytes;
 }
