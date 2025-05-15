@@ -190,59 +190,37 @@ class _ShareScreenState extends State<ShareScreen>
   // Handle incoming file data
   Future<void> _handleIncomingFile(List<int> fileData) async {
     try {
-      // Update transfer mode
-      setState(() {
-        _transferMode = FileTransferMode.receiving;
-      });
-
-      // Get sender/client info from _expectedFile
-      final senderId = _expectedFile?['fromId'] ?? 'unknown_sender';
-      final fileName = _expectedFile?['filename'] ?? 'file.bin';
-
       // Decrypt the received file bytes
       final decryptedBytes = decryptFileBytes(fileData);
 
-      // Use the default storage location from StorageManager
-      final file = await StorageManager.saveToDefaultStorage(
-        fileName,
+      // Save the decrypted file
+      final senderId = _expectedFile?['fromId'] ?? 'unknown_sender';
+      final fileName = _expectedFile?['filename'] ?? 'file.bin';
+
+      final tempDir = await getTemporaryDirectory();
+      final senderDir = Directory('${tempDir.path}/$senderId');
+      if (!await senderDir.exists()) {
+        await senderDir.create(recursive: true);
+      }
+
+      final file = File('${senderDir.path}/$fileName');
+      await file.writeAsBytes(
         Uint8List.fromList(decryptedBytes),
-        subfolder: senderId,
-      );
+      ); // <-- Fix: ensure Uint8List
 
-      // Show success notification
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('File received: $fileName'),
-          action: SnackBarAction(
-            label: 'Open',
-            onPressed: () async {
-              await OpenFile.open(file.path);
-            },
-          ),
-        ),
+        SnackBar(content: Text('File received and decrypted: $fileName')),
       );
 
-      // Clear the expected file metadata
       setState(() {
         _expectedFile = null;
-        // Reset transfer mode after a delay
-        Future.delayed(Duration(seconds: 2), () {
-          if (mounted) {
-            setState(() {
-              _transferMode = FileTransferMode.idle;
-            });
-          }
-        });
+        // Optionally reset transfer mode here
       });
     } catch (e) {
       print('Error saving received file: $e');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to save file: $e')));
-
-      setState(() {
-        _transferMode = FileTransferMode.idle;
-      });
     }
   }
 
