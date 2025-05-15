@@ -805,17 +805,28 @@ final _encryptionKey = encrypt.Key.fromUtf8(
 final _iv = encrypt.IV.fromUtf8('my16byteslongiv!!'); // 16 chars
 
 List<int> encryptFileBytes(List<int> bytes) {
+  // Encrypt
+  final iv = encrypt.IV.fromSecureRandom(16);
   final encrypter = encrypt.Encrypter(
     encrypt.AES(_encryptionKey, mode: encrypt.AESMode.cbc),
   );
-  final encrypted = encrypter.encryptBytes(bytes, iv: _iv);
-  return encrypted.bytes;
+  final encrypted = encrypter.encryptBytes(bytes, iv: iv);
+  // Send iv.bytes + encrypted.bytes
+  return [...iv.bytes, ...encrypted.bytes];
 }
 
 List<int> decryptFileBytes(List<int> encryptedBytes) {
+  // Decrypt
+  final receivedIv = encrypt.IV(
+    Uint8List.fromList(encryptedBytes.sublist(0, 16)),
+  );
+  final encryptedData = encryptedBytes.sublist(16);
   final encrypter = encrypt.Encrypter(
     encrypt.AES(_encryptionKey, mode: encrypt.AESMode.cbc),
   );
-  final encrypted = encrypt.Encrypted(Uint8List.fromList(encryptedBytes));
-  return encrypter.decryptBytes(encrypted, iv: _iv);
+  final decrypted = encrypter.decryptBytes(
+    encrypt.Encrypted(Uint8List.fromList(encryptedData)),
+    iv: receivedIv,
+  );
+  return decrypted;
 }
