@@ -484,7 +484,7 @@ class PhotosScreen extends StatelessWidget {
               final file = files[index] as File;
               return GestureDetector(
                 onTap: () {
-                  // Optionally, open the image in a viewer
+                  openFileByPath(file.path); // <-- open the file
                 },
                 child: Image.file(file, fit: BoxFit.cover),
               );
@@ -754,4 +754,8 @@ class ArchivesScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+void openFileByPath(String path) {
+  OpenFile.open(path);
 }
