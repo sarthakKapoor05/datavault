@@ -780,21 +780,22 @@ class _ShareScreenState extends State<ShareScreen>
   }
 }
 
-// You should store this key securely!
-final _encryptionKey = encrypt.Key.fromUtf8(
-  'my32lengthsupersecretnooneknows!',
-); // 32 chars for AES-256
-final _iv = encrypt.IV.fromLength(16);
+// Remove these encryption/decryption helpers and key/iv definitions:
 
-List<int> encryptFileBytes(List<int> bytes) {
-  final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
-  final encrypted = encrypter.encryptBytes(bytes, iv: _iv);
-  return encrypted.bytes;
-}
+// final _encryptionKey = encrypt.Key.fromUtf8(
+//   'my32lengthsupersecretnooneknows!',
+// ); // 32 chars for AES-256
+// final _iv = encrypt.IV.fromLength(16);
 
-List<int> decryptFileBytes(List<int> encryptedBytes) {
-  final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
-  final encrypted = encrypt.Encrypted(Uint8List.fromList(encryptedBytes));
-  final decrypted = encrypter.decryptBytes(encrypted, iv: _iv);
-  return decrypted;
-}
+// List<int> encryptFileBytes(List<int> bytes) {
+//   final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
+//   final encrypted = encrypter.encryptBytes(bytes, iv: _iv);
+//   return encrypted.bytes;
+// }
+
+// List<int> decryptFileBytes(List<int> encryptedBytes) {
+//   final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
+//   final encrypted = encrypt.Encrypted(Uint8List.fromList(encryptedBytes));
+//   final decrypted = encrypter.decryptBytes(encrypted, iv: _iv);
+//   return decrypted;
+// }
