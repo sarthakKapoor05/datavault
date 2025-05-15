@@ -279,18 +279,10 @@ class _ShareScreenState extends State<ShareScreen>
     File file = File(fileInfo.path!);
     final fileBytes = await file.readAsBytes();
     final encryptedBytes = encryptFileBytes(fileBytes);
-    // Send encryptedBytes instead of fileBytes
-    _channel!.sink.add(encryptedBytes);
 
     final fileName = fileInfo.name;
-    final fileSize = fileBytes.length;
 
-    // Show sending notification
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Sending file: $fileName')));
-
-    // Send metadata with targetId
+    // Send metadata with encrypted size
     _channel!.sink.add(
       jsonEncode({
         "type": "file_metadata",
@@ -309,23 +301,20 @@ class _ShareScreenState extends State<ShareScreen>
       if (message is String) {
         final data = jsonDecode(message);
         if (data['type'] == 'ready_for_file') {
-          // Send the actual file data
-          _channel!.sink.add(fileBytes);
+          // Send the actual encrypted file data
+          _channel!.sink.add(encryptedBytes); // <--- FIXED
 
-          // Complete after a short delay to allow the file to be sent
           Future.delayed(Duration(milliseconds: 500), () {
             if (!sendCompleter.isCompleted) {
               sendCompleter.complete();
             }
           });
 
-          // Cancel the subscription
           subscription?.cancel();
         }
       }
     });
 
-    // Set timeout
     Future.delayed(Duration(seconds: 10), () {
       if (!sendCompleter.isCompleted) {
         sendCompleter.completeError('Timeout waiting for server response');
