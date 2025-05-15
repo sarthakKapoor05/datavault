@@ -43,8 +43,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _currentStoragePath = selectedDir;
         });
 
+        // Notify the user the path was updated
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Storage location updated successfully')),
+          SnackBar(
+            content: Text('Storage location updated successfully'),
+            action: SnackBarAction(
+              label: 'View Files',
+              onPressed: () {
+                Navigator.pop(context); // Return to the dashboard
+              },
+            ),
+          ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
