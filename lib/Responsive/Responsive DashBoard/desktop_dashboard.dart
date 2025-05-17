@@ -133,6 +133,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
       // Get the default storage path
       final storagePath = await StorageManager.getDefaultStoragePath();
 
+      // Scan both the root and the Received subfolder
+      final receivedDir = Directory('$storagePath/Received');
+      final List<Directory> scanDirs = [Directory(storagePath)];
+      if (await receivedDir.exists()) {
+        scanDirs.add(receivedDir);
+      }
+
       // Create counters for each category
       Map<String, int> categoryCounts = {
         'Photos': 0,
@@ -143,15 +150,11 @@ class _FileManagerPageState extends State<FileManagerPage> {
         'Archives': 0,
       };
 
-      // Get the directory and scan for files
-      final directory = Directory(storagePath);
-      if (await directory.exists()) {
-        // Scan recursively to include all subfolders
+      // Scan all directories
+      for (final directory in scanDirs) {
         await for (var entity in directory.list(recursive: true)) {
           if (entity is File) {
             final path = entity.path.toLowerCase();
-
-            // Check which category this file belongs to
             for (var category in categoryExtensions.keys) {
               if (categoryExtensions[category]!.any(
                 (ext) => path.endsWith(ext),
@@ -162,17 +165,16 @@ class _FileManagerPageState extends State<FileManagerPage> {
             }
           }
         }
-
-        // Update the category counts in the UI
-        setState(() {
-          for (int i = 0; i < categories.length; i++) {
-            categories[i]['count'] =
-                categoryCounts[categories[i]['title']] ?? 0;
-          }
-        });
-
-        print('Category counts updated: $categoryCounts');
       }
+
+      // Update the category counts in the UI
+      setState(() {
+        for (int i = 0; i < categories.length; i++) {
+          categories[i]['count'] = categoryCounts[categories[i]['title']] ?? 0;
+        }
+      });
+
+      print('Category counts updated: $categoryCounts');
     } catch (e) {
       print('Error scanning categories: $e');
     }
@@ -749,18 +751,31 @@ class PhotosScreen extends StatelessWidget {
   const PhotosScreen({super.key});
 
   Future<List<FileSystemEntity>> _getPhotoFiles() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final files =
-        dir.listSync(recursive: true, followLinks: false).where((entity) {
-          final path = entity.path.toLowerCase();
-          return entity is File &&
-              (path.endsWith('.jpg') ||
-                  path.endsWith('.jpeg') ||
-                  path.endsWith('.png') ||
-                  path.endsWith('.gif') ||
-                  path.endsWith('.bmp') ||
-                  path.endsWith('.webp'));
-        }).toList();
+    final storagePath = await StorageManager.getDefaultStoragePath();
+    final receivedDir = Directory('$storagePath/Received');
+    final List<FileSystemEntity> files = [];
+
+    // Helper to collect files from a directory
+    Future<void> collectFiles(Directory dir) async {
+      if (await dir.exists()) {
+        files.addAll(
+          dir.listSync(recursive: true, followLinks: false).where((entity) {
+            final path = entity.path.toLowerCase();
+            return entity is File &&
+                (path.endsWith('.jpg') ||
+                    path.endsWith('.jpeg') ||
+                    path.endsWith('.png') ||
+                    path.endsWith('.gif') ||
+                    path.endsWith('.bmp') ||
+                    path.endsWith('.webp'));
+          }),
+        );
+      }
+    }
+
+    await collectFiles(Directory(storagePath));
+    await collectFiles(receivedDir);
+
     return files;
   }
 
@@ -806,18 +821,31 @@ class VideosScreen extends StatelessWidget {
   const VideosScreen({super.key});
 
   Future<List<FileSystemEntity>> _getVideoFiles() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final files =
-        dir.listSync(recursive: true, followLinks: false).where((entity) {
-          final path = entity.path.toLowerCase();
-          return entity is File &&
-              (path.endsWith('.mp4') ||
-                  path.endsWith('.avi') ||
-                  path.endsWith('.mov') ||
-                  path.endsWith('.mkv') ||
-                  path.endsWith('.flv') ||
-                  path.endsWith('.wmv'));
-        }).toList();
+    final storagePath = await StorageManager.getDefaultStoragePath();
+    final receivedDir = Directory('$storagePath/Received');
+    final List<FileSystemEntity> files = [];
+
+    // Helper to collect files from a directory
+    Future<void> collectFiles(Directory dir) async {
+      if (await dir.exists()) {
+        files.addAll(
+          dir.listSync(recursive: true, followLinks: false).where((entity) {
+            final path = entity.path.toLowerCase();
+            return entity is File &&
+                (path.endsWith('.mp4') ||
+                    path.endsWith('.avi') ||
+                    path.endsWith('.mov') ||
+                    path.endsWith('.mkv') ||
+                    path.endsWith('.flv') ||
+                    path.endsWith('.wmv'));
+          }),
+        );
+      }
+    }
+
+    await collectFiles(Directory(storagePath));
+    await collectFiles(receivedDir);
+
     return files;
   }
 
@@ -841,7 +869,7 @@ class VideosScreen extends StatelessWidget {
               final file = files[index] as File;
               final fileName = file.path.split(Platform.pathSeparator).last;
               return ListTile(
-                leading: const Icon(Icons.videocam), // or appropriate icon
+                leading: const Icon(Icons.videocam),
                 title: Text(fileName),
                 onTap: () {
                   openFileByPath(file.path);
@@ -859,18 +887,30 @@ class AudioScreen extends StatelessWidget {
   const AudioScreen({super.key});
 
   Future<List<FileSystemEntity>> _getAudioFiles() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final files =
-        dir.listSync(recursive: true, followLinks: false).where((entity) {
-          final path = entity.path.toLowerCase();
-          return entity is File &&
-              (path.endsWith('.mp3') ||
-                  path.endsWith('.wav') ||
-                  path.endsWith('.aac') ||
-                  path.endsWith('.ogg') ||
-                  path.endsWith('.flac') ||
-                  path.endsWith('.m4a'));
-        }).toList();
+    final storagePath = await StorageManager.getDefaultStoragePath();
+    final receivedDir = Directory('$storagePath/Received');
+    final List<FileSystemEntity> files = [];
+
+    Future<void> collectFiles(Directory dir) async {
+      if (await dir.exists()) {
+        files.addAll(
+          dir.listSync(recursive: true, followLinks: false).where((entity) {
+            final path = entity.path.toLowerCase();
+            return entity is File &&
+                (path.endsWith('.mp3') ||
+                    path.endsWith('.wav') ||
+                    path.endsWith('.aac') ||
+                    path.endsWith('.ogg') ||
+                    path.endsWith('.flac') ||
+                    path.endsWith('.m4a'));
+          }),
+        );
+      }
+    }
+
+    await collectFiles(Directory(storagePath));
+    await collectFiles(receivedDir);
+
     return files;
   }
 
@@ -897,7 +937,7 @@ class AudioScreen extends StatelessWidget {
                 leading: const Icon(Icons.music_note),
                 title: Text(fileName),
                 onTap: () {
-                  // Optionally, open the audio file
+                  openFileByPath(file.path);
                 },
               );
             },
@@ -912,20 +952,32 @@ class DocumentsScreen extends StatelessWidget {
   const DocumentsScreen({super.key});
 
   Future<List<FileSystemEntity>> _getDocumentFiles() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final files =
-        dir.listSync(recursive: true, followLinks: false).where((entity) {
-          final path = entity.path.toLowerCase();
-          return entity is File &&
-              (path.endsWith('.pdf') ||
-                  path.endsWith('.doc') ||
-                  path.endsWith('.docx') ||
-                  path.endsWith('.xls') ||
-                  path.endsWith('.xlsx') ||
-                  path.endsWith('.ppt') ||
-                  path.endsWith('.pptx') ||
-                  path.endsWith('.txt'));
-        }).toList();
+    final storagePath = await StorageManager.getDefaultStoragePath();
+    final receivedDir = Directory('$storagePath/Received');
+    final List<FileSystemEntity> files = [];
+
+    Future<void> collectFiles(Directory dir) async {
+      if (await dir.exists()) {
+        files.addAll(
+          dir.listSync(recursive: true, followLinks: false).where((entity) {
+            final path = entity.path.toLowerCase();
+            return entity is File &&
+                (path.endsWith('.pdf') ||
+                    path.endsWith('.doc') ||
+                    path.endsWith('.docx') ||
+                    path.endsWith('.xls') ||
+                    path.endsWith('.xlsx') ||
+                    path.endsWith('.ppt') ||
+                    path.endsWith('.pptx') ||
+                    path.endsWith('.txt'));
+          }),
+        );
+      }
+    }
+
+    await collectFiles(Directory(storagePath));
+    await collectFiles(receivedDir);
+
     return files;
   }
 
@@ -952,7 +1004,7 @@ class DocumentsScreen extends StatelessWidget {
                 leading: const Icon(Icons.insert_drive_file),
                 title: Text(fileName),
                 onTap: () {
-                  // Optionally, open the document file
+                  openFileByPath(file.path);
                 },
               );
             },
@@ -967,12 +1019,24 @@ class ApksScreen extends StatelessWidget {
   const ApksScreen({super.key});
 
   Future<List<FileSystemEntity>> _getApkFiles() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final files =
-        dir.listSync(recursive: true, followLinks: false).where((entity) {
-          final path = entity.path.toLowerCase();
-          return entity is File && path.endsWith('.apk');
-        }).toList();
+    final storagePath = await StorageManager.getDefaultStoragePath();
+    final receivedDir = Directory('$storagePath/Received');
+    final List<FileSystemEntity> files = [];
+
+    Future<void> collectFiles(Directory dir) async {
+      if (await dir.exists()) {
+        files.addAll(
+          dir.listSync(recursive: true, followLinks: false).where((entity) {
+            final path = entity.path.toLowerCase();
+            return entity is File && path.endsWith('.apk');
+          }),
+        );
+      }
+    }
+
+    await collectFiles(Directory(storagePath));
+    await collectFiles(receivedDir);
+
     return files;
   }
 
@@ -999,7 +1063,7 @@ class ApksScreen extends StatelessWidget {
                 leading: const Icon(Icons.android),
                 title: Text(fileName),
                 onTap: () {
-                  // Optionally, open the APK file
+                  openFileByPath(file.path);
                 },
               );
             },
@@ -1014,17 +1078,29 @@ class ArchivesScreen extends StatelessWidget {
   const ArchivesScreen({super.key});
 
   Future<List<FileSystemEntity>> _getArchiveFiles() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final files =
-        dir.listSync(recursive: true, followLinks: false).where((entity) {
-          final path = entity.path.toLowerCase();
-          return entity is File &&
-              (path.endsWith('.zip') ||
-                  path.endsWith('.rar') ||
-                  path.endsWith('.tar') ||
-                  path.endsWith('.gz') ||
-                  path.endsWith('.7z'));
-        }).toList();
+    final storagePath = await StorageManager.getDefaultStoragePath();
+    final receivedDir = Directory('$storagePath/Received');
+    final List<FileSystemEntity> files = [];
+
+    Future<void> collectFiles(Directory dir) async {
+      if (await dir.exists()) {
+        files.addAll(
+          dir.listSync(recursive: true, followLinks: false).where((entity) {
+            final path = entity.path.toLowerCase();
+            return entity is File &&
+                (path.endsWith('.zip') ||
+                    path.endsWith('.rar') ||
+                    path.endsWith('.tar') ||
+                    path.endsWith('.gz') ||
+                    path.endsWith('.7z'));
+          }),
+        );
+      }
+    }
+
+    await collectFiles(Directory(storagePath));
+    await collectFiles(receivedDir);
+
     return files;
   }
 
@@ -1051,7 +1127,7 @@ class ArchivesScreen extends StatelessWidget {
                 leading: const Icon(Icons.archive),
                 title: Text(fileName),
                 onTap: () {
-                  // Optionally, open the archive file
+                  openFileByPath(file.path);
                 },
               );
             },
