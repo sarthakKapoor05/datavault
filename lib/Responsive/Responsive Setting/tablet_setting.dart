@@ -21,7 +21,7 @@ class _TabletSettingState extends State<TabletSetting> {
   Future<void> _loadUserName() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      userName = prefs.getString('device_name') ?? " Kapoor";
+      userName = prefs.getString('device_name') ?? " ";
     });
   }
 
