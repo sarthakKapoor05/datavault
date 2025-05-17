@@ -117,10 +117,10 @@ packages:
     dependency: "direct main"
     description:
       name: disk_space_plus
-      sha256: "4a1b633d4187b47a99afe35629ea84ac0e2909ed4d4a172b99da757c1a51814c"
+      sha256: eefdc9ffe232f03ae50e58b2fef574d2e12c805dc1d22cc5cc7cf7a4a78fdd94
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.4"
+    version: "0.2.5"
   emoji_picker_flutter:
     dependency: "direct main"
     description:
@@ -726,5 +726,5 @@ packages:
     source: hosted
     version: "1.1.0"
 sdks:
-  dart: ">=3.7.0 <4.0.0"
+  dart: ">=3.7.2 <4.0.0"
   flutter: ">=3.27.0"

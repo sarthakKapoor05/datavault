@@ -48,7 +48,6 @@ dependencies:
   provider: ^6.1.4
   mime: ^2.0.0
   device_info_plus: ^11.4.0
-  # disk_space: ^0.2.1
   system_info2: ^4.0.0
   encrypt: ^5.0.3
   event_bus: ^2.0.1
