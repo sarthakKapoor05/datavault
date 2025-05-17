@@ -41,7 +41,7 @@ class _ShareScreenState extends State<ShareScreen>
       }
 
       // Connect to local WebSocket server on port 8080
-      final wsUrl = Uri.parse('ws://192.168.0.100:8080');
+      final wsUrl = Uri.parse('ws://192.168.18.226:8080');
       _channel = WebSocketChannel.connect(wsUrl);
 
       // Create a broadcast stream that can be listened to multiple times
@@ -624,20 +624,7 @@ class _ShareScreenState extends State<ShareScreen>
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.max,
         children: [
-          Icon(
-            _transferMode == FileTransferMode.sending
-                ? Icons.upload
-                : _transferMode == FileTransferMode.receiving
-                ? Icons.download
-                : Icons.devices,
-            size: 30,
-            color:
-                _transferMode == FileTransferMode.sending
-                    ? Colors.amber
-                    : _transferMode == FileTransferMode.receiving
-                    ? Colors.green
-                    : Colors.white,
-          ),
+          Icon(Icons.devices, size: 30, color: Colors.white),
           const SizedBox(height: 8),
           Text(
             device['name'] ?? 'Unknown',
@@ -656,104 +643,39 @@ class _ShareScreenState extends State<ShareScreen>
           ),
           const SizedBox(height: 8),
 
-          // Show different buttons based on the transfer mode
-          if (_transferMode == FileTransferMode.idle) ...[
-            // Mode selection buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ElevatedButton.icon(
-                  icon: Icon(Icons.upload, size: 16),
-                  label: Text('Send', style: TextStyle(fontSize: 12)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.amber,
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _transferMode = FileTransferMode.sending;
-                    });
-                  },
+          // Always show both actions
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ElevatedButton.icon(
+                icon: Icon(Icons.upload, size: 16),
+                label: Text('Send File', style: TextStyle(fontSize: 12)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber,
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
-                SizedBox(width: 10),
-                ElevatedButton.icon(
-                  icon: Icon(Icons.download, size: 16),
-                  label: Text('Receive', style: TextStyle(fontSize: 12)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _transferMode = FileTransferMode.receiving;
-                    });
-                  },
+                onPressed: () => sendFileToClient(device['id']),
+              ),
+              SizedBox(width: 10),
+              ElevatedButton.icon(
+                icon: Icon(Icons.download, size: 16),
+                label: Text('Ready to Receive', style: TextStyle(fontSize: 12)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
-              ],
-            ),
-            SizedBox(height: 8),
-            // Chat button
-            ElevatedButton.icon(
-              icon: Icon(Icons.chat),
-              label: Text('Chat'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Color(0xFF50C2C9),
-                padding: EdgeInsets.symmetric(horizontal: 20),
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Waiting for files from ${device['name'] ?? 'client'}...',
+                      ),
+                    ),
+                  );
+                },
               ),
-              onPressed: () => navigateToFileTransfer(device['id']),
-            ),
-          ],
-
-          // Send mode UI
-          if (_transferMode == FileTransferMode.sending) ...[
-            Text(
-              'Select files to send',
-              style: TextStyle(
-                color: Colors.amber,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: 8),
-            ElevatedButton.icon(
-              icon: Icon(Icons.attach_file),
-              label: Text('Select File'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
-              onPressed: () => sendFileToClient(device['id']),
-            ),
-            SizedBox(height: 8),
-            TextButton.icon(
-              icon: Icon(Icons.cancel),
-              label: Text('Cancel'),
-              onPressed: () {
-                setState(() {
-                  _transferMode = FileTransferMode.idle;
-                });
-              },
-            ),
-          ],
-
-          // Receive mode UI
-          if (_transferMode == FileTransferMode.receiving) ...[
-            Text(
-              'Ready to receive files',
-              style: TextStyle(
-                color: Colors.green,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: 8),
-            Icon(Icons.download_done, size: 32, color: Colors.green),
-            SizedBox(height: 8),
-            TextButton.icon(
-              icon: Icon(Icons.cancel),
-              label: Text('Cancel'),
-              onPressed: () {
-                setState(() {
-                  _transferMode = FileTransferMode.idle;
-                });
-              },
-            ),
-          ],
+            ],
+          ),
         ],
       ),
     );

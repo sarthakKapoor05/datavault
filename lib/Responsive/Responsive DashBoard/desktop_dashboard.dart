@@ -27,11 +27,14 @@ class FileManagerPage extends StatefulWidget {
 
 class _FileManagerPageState extends State<FileManagerPage> {
   bool isTextFieldEditable = false;
-  final double usedStorage = 28;
-  final double totalStorage = 128.0;
+  double usedStorage = 0;
+  double totalStorage = 0;
   String? _currentStoragePath;
   List<FileSystemEntity> _storageFiles = []; // Add this for storage files
   bool _isLoadingStorageFiles = false; // Add loading indicator state
+
+  int usedStorageBytes = 0;
+  int totalStorageBytes = 0;
 
   final List<Map<String, dynamic>> categories = [
     {'title': 'Photos', 'count': 0, 'icon': Icons.photo, 'color': Colors.blue},
@@ -94,7 +97,45 @@ class _FileManagerPageState extends State<FileManagerPage> {
   void initState() {
     super.initState();
     _scanAndUpdateCategories();
-    _loadStorageFiles(); // Add this to load files on startup
+    _loadStorageFiles();
+    _calculateFolderUsage(); // Add this
+  }
+
+  // Calculate the total and used size of the selected storage folder
+  Future<void> _calculateFolderUsage() async {
+    try {
+      final storagePath = await StorageManager.getDefaultStoragePath();
+      final directory = Directory(storagePath);
+
+      int totalBytes = 0;
+      int fileCount = 0;
+
+      if (await directory.exists()) {
+        await for (var entity in directory.list(
+          recursive: true,
+          followLinks: false,
+        )) {
+          if (entity is File) {
+            totalBytes += await entity.length();
+            fileCount++;
+          }
+        }
+      }
+
+      setState(() {
+        usedStorage =
+            totalBytes / (1024 * 1024 * 1024); // (keep for progress bar)
+        totalStorage = usedStorage; // (keep for progress bar)
+        usedStorageBytes = totalBytes;
+        totalStorageBytes = totalBytes;
+      });
+    } catch (e) {
+      print('Error calculating folder usage: $e');
+      setState(() {
+        usedStorage = 0;
+        totalStorage = 0;
+      });
+    }
   }
 
   // Add this method to load files from the default storage
@@ -206,12 +247,14 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   // Function to format file size
-  String _formatFileSize(int bytes) {
+  String _formatFileSize(num bytes) {
     if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(2)} KB';
     if (bytes < 1024 * 1024 * 1024)
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
+    if (bytes < 1024 * 1024 * 1024 * 1024)
+      return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+    return '${(bytes / (1024 * 1024 * 1024 * 1024)).toStringAsFixed(2)} TB';
   }
 
   // Add this widget builder method
@@ -535,7 +578,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
                       ),
                       const SizedBox(height: 8),
                       LinearProgressIndicator(
-                        value: usedStorage / totalStorage,
+                        value:
+                            totalStorage == 0 ? 0 : usedStorage / totalStorage,
                         backgroundColor: Colors.grey[700],
                         color: Colors.green,
                         minHeight: 8,
