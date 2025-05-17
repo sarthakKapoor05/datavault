@@ -669,24 +669,6 @@ class _ShareScreenState extends State<ShareScreen>
                 ),
                 onPressed: () => sendFileToClient(device['id']),
               ),
-              SizedBox(width: 10),
-              ElevatedButton.icon(
-                icon: Icon(Icons.download, size: 16),
-                label: Text('Ready to Receive', style: TextStyle(fontSize: 12)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                ),
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Waiting for files from ${device['name'] ?? 'client'}...',
-                      ),
-                    ),
-                  );
-                },
-              ),
             ],
           ),
         ],
