@@ -51,6 +51,10 @@ dependencies:
   disk_space: ^0.2.1
   system_info2: ^4.0.0
   encrypt: ^5.0.3
+  event_bus: ^2.0.1
+  emoji_picker_flutter: ^4.3.0
+  storage_info: ^1.0.0
+
   
 dev_dependencies:
   flutter_test:

@@ -1,3 +1,4 @@
+import 'package:datavault/utils/events.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'name_edit_screen.dart'; // Import the new screen
@@ -21,18 +22,19 @@ class _DesktopSettingState extends State<DesktopSetting> {
   Future<void> _loadUserName() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      userName = prefs.getString('device_name') ?? " Kapoor";
+      userName = prefs.getString('device_name') ?? " ";
     });
   }
 
   Future<void> _saveUserName(String name) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('device_name', name);
+    // Notify any listeners about the device name change
+    eventBus.fire(DeviceNameChangedEvent(name));
   }
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -80,8 +82,7 @@ class _DesktopSettingState extends State<DesktopSetting> {
             },
           ),
           Divider(),
-          ListTile(
-          ),
+          ListTile(),
         ],
       ),
     );

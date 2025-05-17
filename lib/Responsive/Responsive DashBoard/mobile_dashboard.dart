@@ -13,6 +13,7 @@ import 'package:datavault/Scrrens/folders.dart';
 import 'package:datavault/Scrrens/received_files_screen.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:storage_info/storage_info.dart';
 
 class MobileDashboard extends StatelessWidget {
   const MobileDashboard({super.key});
@@ -31,8 +32,8 @@ class FileManagerPage extends StatefulWidget {
 }
 
 class _FileManagerPageState extends State<FileManagerPage> {
-  final double usedStorage = 28;
-  final double totalStorage = 128.0;
+  double usedStorage = 0;
+  double totalStorage = 0;
 
   final List<Map<String, dynamic>> categories = [
     {
@@ -76,6 +77,28 @@ class _FileManagerPageState extends State<FileManagerPage> {
     },
     {'title': 'Downloads', 'icon': Icons.download, 'color': Colors.blue},
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    getStorageInfo();
+  }
+
+  Future<void> getStorageInfo() async {
+    final storageInfo = StorageInfo();
+    final totalStorage = await storageInfo.getStorageTotalSpace();
+    final freeStorage = await storageInfo.getStorageFreeSpace();
+    final usedStorage = totalStorage - freeStorage;
+
+    // Convert to GB
+    final usedGB = usedStorage / (1024 * 1024 * 1024);
+    final totalGB = totalStorage / (1024 * 1024 * 1024);
+
+    setState(() {
+      this.usedStorage = usedGB;
+      this.totalStorage = totalGB;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

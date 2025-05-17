@@ -48,10 +48,25 @@ class _NameEditScreenState extends State<NameEditScreen> {
             TextField(
               controller: _nameController,
               maxLength: 25,
+              cursorColor: Color(
+                0xFF50C2C9,
+              ), // Add cursor color to match app theme
               decoration: InputDecoration(
                 labelText: 'Device name',
+                hintText: 'Enter your device name',
                 border: OutlineInputBorder(),
-                suffixIcon: Icon(Icons.tag_faces),
+                suffixIcon: Icon(
+                  Icons
+                      .edit_outlined, // Changed from tag_faces to edit_outlined
+                  color: Color(0xFF50C2C9), // Match app theme color
+                ),
+                // Add focused border color to match cursor
+                focusedBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFF50C2C9)),
+                ),
+                // Add focused label color to match cursor
+                labelStyle: TextStyle(color: Colors.grey),
+                floatingLabelStyle: TextStyle(color: Color(0xFF50C2C9)),
               ),
               onChanged: (_) {
                 setState(() {});
