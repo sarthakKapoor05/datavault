@@ -57,8 +57,8 @@ class _ShareScreenState extends State<ShareScreen>
         jsonEncode({
           "type": "register_device",
           "deviceName": deviceName ?? Platform.localHostname,
-          "deviceId": _deviceId,
-        }),
+          "deviceId": _deviceId
+          }),
       );
 
       // Request the current list of devices
@@ -217,19 +217,31 @@ class _ShareScreenState extends State<ShareScreen>
       // Get sender/client info from _expectedFile
       final senderId = _expectedFile?['fromId'] ?? 'unknown_sender';
       final fileName = _expectedFile?['filename'] ?? 'file.bin';
+      
+      // Find the sender's device name from connected clients
+      String senderName = 'unknown_device';
+      for (var client in _connectedClients) {
+        if (client['id'] == senderId) {
+          senderName = client['name'] ?? 'unknown_device';
+          break;
+        }
+      }
+      
+      // Make sure the folder name is valid for the file system
+      String folderName = _sanitizeFolderName(senderName);
 
-      // Use the default storage location from StorageManager
+      // Use the default storage location from StorageManager with device name as subfolder
       final decryptedBytes = decryptFileBytes(fileData);
       final file = await StorageManager.saveToDefaultStorage(
         fileName,
         Uint8List.fromList(decryptedBytes),
-        subfolder: senderId,
+        subfolder: folderName, // Use device name instead of ID
       );
 
       // Show success notification
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('File received: $fileName'),
+          content: Text('File received: $fileName from $senderName'),
           action: SnackBarAction(
             label: 'Open',
             onPressed: () async {
@@ -774,4 +786,11 @@ List<int> decryptFileBytes(List<int> encryptedBytes) {
     iv: receivedIv,
   );
   return decrypted;
+}
+
+// Add this helper method to sanitize folder names
+String _sanitizeFolderName(String name) {
+  // Replace invalid characters with underscores
+  final sanitized = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+  return sanitized.isNotEmpty ? sanitized : 'unknown_device';
 }
