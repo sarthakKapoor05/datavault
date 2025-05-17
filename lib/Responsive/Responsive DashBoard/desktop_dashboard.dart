@@ -1,11 +1,5 @@
 import 'dart:io';
-import 'package:datavault/Scrrens/Folders/apks_screen.dart';
-import 'package:datavault/Scrrens/Folders/archives_screen.dart';
-import 'package:datavault/Scrrens/Folders/audio_screen.dart';
-import 'package:datavault/Scrrens/Folders/documents_screen.dart';
 import 'package:datavault/Scrrens/downloads_screen.dart';
-import 'package:datavault/Scrrens/Folders/photos_screen.dart';
-import 'package:datavault/Scrrens/Folders/videos_screen.dart';
 import 'package:datavault/Scrrens/settings_screen.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -40,34 +34,29 @@ class _FileManagerPageState extends State<FileManagerPage> {
   bool _isLoadingStorageFiles = false; // Add loading indicator state
 
   final List<Map<String, dynamic>> categories = [
-    {
-      'title': 'Photos',
-      'count': 200,
-      'icon': Icons.photo,
-      'color': Colors.blue,
-    },
+    {'title': 'Photos', 'count': 0, 'icon': Icons.photo, 'color': Colors.blue},
     {
       'title': 'Videos',
-      'count': 100,
+      'count': 0,
       'icon': Icons.video_collection,
       'color': Colors.purple,
     },
     {
       'title': 'Audio',
-      'count': 255,
+      'count': 0,
       'icon': Icons.music_note,
       'color': Colors.orange,
     },
     {
       'title': 'Documents',
-      'count': 90,
+      'count': 0,
       'icon': Icons.insert_drive_file,
       'color': Colors.lightBlue,
     },
     {'title': 'APKs', 'count': 5, 'icon': Icons.android, 'color': Colors.green},
     {
       'title': 'Archives',
-      'count': 11,
+      'count': 0,
       'icon': Icons.archive,
       'color': Colors.brown,
     },

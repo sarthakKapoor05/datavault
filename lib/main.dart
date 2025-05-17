@@ -1,4 +1,4 @@
-import 'package:datavault/Scrrens/pin_page.dart';
+import 'package:datavault/Scrrens/biometrics_and_pin_page.dart';
 import 'package:datavault/theme/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
