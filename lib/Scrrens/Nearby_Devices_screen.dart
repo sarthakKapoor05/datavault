@@ -494,9 +494,22 @@ class _ShareScreenState extends State<ShareScreen>
                     );
                   }),
                   GestureDetector(
-                    onTap: () {
-                      print('button pressed');
-                      startScanning();
+                    onTap: () async {
+                      if (_isConnected) {
+                        // Disconnect from server
+                        await _channel?.sink.close();
+                        setState(() {
+                          _isConnected = false;
+                          _connectedClients
+                              .clear(); // Remove all connected devices
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Disconnected from server')),
+                        );
+                      } else {
+                        // Connect to server
+                        startScanning();
+                      }
                     },
                     child: Container(
                       width: 60,
