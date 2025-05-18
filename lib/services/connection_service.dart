@@ -28,13 +28,13 @@ class ConnectionService with ChangeNotifier {
 
   // Add device files mapping
   Map<String, Map<String, dynamic>> _deviceFiles = {}; // Store device file listings
+  Map<String, Map<String, dynamic>> get deviceFiles => _deviceFiles; // Expose device files
 
   WebSocketChannel? get channel => _channel;
   Stream<dynamic>? get broadcastStream => _broadcastStream;
   bool get isConnected => _isConnected;
   String? get deviceId => _deviceId;
   List<Map<String, dynamic>> get connectedClients => _connectedClients;
-  Map<String, Map<String, dynamic>> get deviceFiles => _deviceFiles; // Expose device files
 
   Future<void> connect(String serverAddress) async {
     if (_isConnected) return;
@@ -139,23 +139,32 @@ class ConnectionService with ChangeNotifier {
               notifyListeners();
             }
 
-            // Handle initial file list request
-            if (data['type'] == 'request_initial_file_list') {
-              _sendInitialFileList();
-            }
-
-            // Handle device files update
-            if (data['type'] == 'device_files_update') {
-              final deviceId = data['deviceId'];
-              final deviceName = data['deviceName'];
-              final files = data['files'];
-              
-              // Store the files listing
-              _storeDeviceFiles(deviceId, deviceName, files);
-              
-              // Notify listeners
-              notifyListeners();
-            }
+            _channel!.stream.listen((message) {
+              if (message is String) {
+                try {
+                  final data = jsonDecode(message);
+                  
+                  // Add the code here
+                  if (data['type'] == 'request_initial_file_list') {
+                    _sendInitialFileList();
+                  }
+                  
+                  if (data['type'] == 'device_files_update') {
+                    final deviceId = data['deviceId'];
+                    final deviceName = data['deviceName'];
+                    final files = data['files'];
+                    
+                    // Store the files listing
+                    _storeDeviceFiles(deviceId, deviceName, files);
+                    
+                    // Notify listeners
+                    notifyListeners();
+                  }
+                } catch (e) {
+                  // Error handling
+                }
+              }
+            });
           }
         } catch (e) {
           print('Error processing message: $e');
