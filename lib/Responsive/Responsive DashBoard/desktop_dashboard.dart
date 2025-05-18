@@ -521,7 +521,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                           ),
                           cursorColor: Theme.of(context).colorScheme.secondary,
                           decoration: InputDecoration(
-                            hintText: 'Search files, folders...',
+                            hintText: 'Search files, folders... djfgjh',
                             hintStyle: TextStyle(
                               color: Theme.of(context).colorScheme.secondary,
                             ),

@@ -21,7 +21,7 @@ class _HomeState extends State<Home> {
   // Screens for navigation
   final screens = [
     ResponsiveLayout(
-      mobileScaffold: MobileDashboard(),
+      mobileScaffold: DesktopDashboard(),
       tabletScaffold: TabletDashboard(),
       desktopScaffold: DesktopDashboard(),
     ),
