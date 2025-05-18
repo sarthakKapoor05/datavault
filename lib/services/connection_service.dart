@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:datavault/services/event_bus_service.dart';
 
 class ConnectionService with ChangeNotifier {
   static final ConnectionService _instance = ConnectionService._internal();
@@ -17,6 +18,10 @@ class ConnectionService with ChangeNotifier {
   String? deviceName;
   List<Map<String, dynamic>> _connectedClients = [];
   Timer? _pingTimer;
+
+  // Add to ConnectionService class
+  Map<String, bool> _grantedPermissions = {};
+  Map<String, String> _pendingPermissionRequests = {};
 
   WebSocketChannel? get channel => _channel;
   Stream<dynamic>? get broadcastStream => _broadcastStream;
@@ -93,6 +98,38 @@ class ConnectionService with ChangeNotifier {
                 );
                 notifyListeners();
               }
+            }
+
+            if (data['type'] == 'file_access_request') {
+              final requesterId = data['requesterId'];
+              final requesterName = data['requesterName'];
+              
+              _pendingPermissionRequests[requesterId] = requesterName;
+              
+              // Notify listeners so UI can show permission dialog
+              notifyListeners();
+              
+              // Also broadcast an event for this
+              eventBus.fire(FileAccessRequestEvent(
+                requesterId: requesterId,
+                requesterName: requesterName
+              ));
+            }
+
+            if (data['type'] == 'file_access_response') {
+              final granted = data['granted'] == true;
+              final targetId = data['targetId'];
+              
+              if (granted) {
+                _grantedPermissions[targetId] = true;
+                // Now we can proceed with file listing
+                eventBus.fire(FileAccessGrantedEvent(deviceId: targetId));
+              } else {
+                _grantedPermissions[targetId] = false;
+                eventBus.fire(FileAccessDeniedEvent(deviceId: targetId));
+              }
+              
+              notifyListeners();
             }
           }
         } catch (e) {
@@ -183,6 +220,54 @@ class ConnectionService with ChangeNotifier {
       "filename": fileName,
       "requesterId": _deviceId,
     }));
+  }
+
+  // Check if a device has permission
+  bool hasPermissionForDevice(String deviceId) {
+    return _grantedPermissions[deviceId] == true;
+  }
+
+  // Request permission to access files
+  Future<void> requestFileAccess(String deviceId) async {
+    if (!_isConnected || _channel == null) {
+      throw Exception('Not connected to server');
+    }
+    
+    _channel!.sink.add(jsonEncode({
+      "type": "request_file_access",
+      "targetId": deviceId,
+      "requesterId": _deviceId,
+    }));
+    
+    // Track this pending request
+    _pendingPermissionRequests[deviceId] = 'pending';
+    notifyListeners();
+  }
+
+  // Grant permission to a device
+  void grantPermissionTo(String deviceId) {
+    if (!_isConnected || _channel == null) return;
+    
+    _channel!.sink.add(jsonEncode({
+      "type": "file_access_response",
+      "requesterId": deviceId,
+      "granted": true
+    }));
+  }
+
+  // Deny permission to a device
+  void denyPermissionTo(String deviceId) {
+    if (!_isConnected || _channel == null) return;
+    
+    _channel!.sink.add(jsonEncode({
+      "type": "file_access_response",
+      "requesterId": deviceId,
+      "granted": false
+    }));
+    
+    // Remove from pending requests
+    _pendingPermissionRequests.remove(deviceId);
+    notifyListeners();
   }
 
   @override

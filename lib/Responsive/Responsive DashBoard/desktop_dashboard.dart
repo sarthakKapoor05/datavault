@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:datavault/utils/storage_manager.dart'; // Add this import
 import 'package:intl/intl.dart'; // Add this import for date formatting
 import 'package:datavault/services/connection_service.dart';
+import 'package:datavault/services/event_bus_service.dart';
 import 'package:provider/provider.dart';
 
 class DesktopDashboard extends StatelessWidget {
@@ -98,12 +99,20 @@ class _FileManagerPageState extends State<FileManagerPage> {
     'Archives': ['.zip', '.rar', '.tar', '.gz', '.7z'],
   };
 
+  // Add this field to _FileManagerPageState
+  StreamSubscription? _permissionRequestSubscription;
+
   @override
   void initState() {
     super.initState();
     _scanAndUpdateCategories();
     _loadStorageFiles();
     _calculateFolderUsage(); // Add this
+
+    // Listen for file access permission requests
+    _permissionRequestSubscription = eventBus.on<FileAccessRequestEvent>().listen((event) {
+      _showPermissionRequestDialog(context, event.requesterId, event.requesterName);
+    });
   }
 
   // Calculate the total and used size of the selected storage folder
@@ -971,6 +980,77 @@ class _FileManagerPageState extends State<FileManagerPage> {
   void _showRemoteFileBrowser(BuildContext context, String deviceId, String deviceName) {
     final connectionService = Provider.of<ConnectionService>(context, listen: false);
     
+    // Check if we already have permission
+    if (connectionService.hasPermissionForDevice(deviceId)) {
+      // Show loading dialog and proceed with file request
+      _requestRemoteFilesList(deviceId, deviceName);
+      return;
+    }
+    
+    // If not, show requesting access dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text('Requesting Access'),
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Expanded(
+              child: Text('Requesting file access from $deviceName...'),
+            ),
+          ],
+        ),
+      ),
+    );
+    
+    // Request permission
+    connectionService.requestFileAccess(deviceId);
+    
+    // First declare the subscription variable
+    StreamSubscription? subscription;
+    
+    // Then assign it in a separate statement
+    subscription = eventBus.on<FileAccessGrantedEvent>().listen((event) {
+      if (event.deviceId == deviceId) {
+        // Permission granted, close dialog and show file browser
+        Navigator.of(context, rootNavigator: true).pop();
+        _requestRemoteFilesList(deviceId, deviceName);
+        subscription?.cancel();  // Now this works correctly
+      }
+    });
+    
+    // Also listen for denial
+    StreamSubscription? denialSubscription;
+    denialSubscription = eventBus.on<FileAccessDeniedEvent>().listen((event) {
+      if (event.deviceId == deviceId) {
+        // Permission denied, show message
+        Navigator.of(context, rootNavigator: true).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$deviceName denied file access request'))
+        );
+        denialSubscription?.cancel();  // Now this works correctly
+      }
+    });
+    
+    // Set timeout
+    Future.delayed(Duration(seconds: 15), () {
+      subscription?.cancel();
+      denialSubscription?.cancel();
+      if (Navigator.of(context, rootNavigator: true).canPop()) {
+        Navigator.of(context, rootNavigator: true).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Request timed out. Please try again.'))
+        );
+      }
+    });
+  }
+
+  // Helper method to request files after permission is granted
+  void _requestRemoteFilesList(String deviceId, String deviceName) {
+    final connectionService = Provider.of<ConnectionService>(context, listen: false);
+    
     // Declare the subscription variable first
     StreamSubscription? subscription;
     
@@ -1016,7 +1096,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: Text('Requesting Files'),
+        title: Text('Loading Files'),
         content: Row(
           children: [
             CircularProgressIndicator(),
@@ -1027,20 +1107,63 @@ class _FileManagerPageState extends State<FileManagerPage> {
       ),
     );
     
-    // Set timeout for dialog
-    Future.delayed(Duration(seconds: 10), () {
-      // Check if dialog is still showing
-      if (ModalRoute.of(context)?.isCurrent != true) {
-        Navigator.of(context, rootNavigator: true).pop();
-        subscription?.cancel();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Request timed out. Please try again.'))
-        );
-      }
-    });
-    
     // Request file list
     connectionService.requestRemoteFileList(deviceId);
+  }
+
+  // Add to desktop_dashboard.dart
+  void _showPermissionRequestDialog(BuildContext context, String requesterId, String requesterName) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text('File Access Request'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.folder_shared, size: 48, color: Colors.blue),
+            SizedBox(height: 16),
+            Text('$requesterName wants to access your files', textAlign: TextAlign.center),
+            SizedBox(height: 8),
+            Text(
+              'If you approve, they will be able to browse and download your files.',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            child: Text('Deny'),
+            onPressed: () {
+              // Deny access
+              final connectionService = Provider.of<ConnectionService>(context, listen: false);
+              connectionService.denyPermissionTo(requesterId);
+              Navigator.pop(context);
+            },
+          ),
+          ElevatedButton(
+            child: Text('Allow'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+            ),
+            onPressed: () {
+              // Grant access
+              final connectionService = Provider.of<ConnectionService>(context, listen: false);
+              connectionService.grantPermissionTo(requesterId);
+              Navigator.pop(context);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    // Cancel the permission request subscription
+    _permissionRequestSubscription?.cancel();
+    super.dispose();
   }
 }
 
@@ -1538,4 +1661,24 @@ class _StorageFilesScreenState extends State<StorageFilesScreen> {
       ),
     );
   }
+}
+
+// Add to an events.dart file or at the top of connection_service.dart
+class FileAccessRequestEvent {
+  final String requesterId;
+  final String requesterName;
+  
+  FileAccessRequestEvent({required this.requesterId, required this.requesterName});
+}
+
+class FileAccessGrantedEvent {
+  final String deviceId;
+  
+  FileAccessGrantedEvent({required this.deviceId});
+}
+
+class FileAccessDeniedEvent {
+  final String deviceId;
+  
+  FileAccessDeniedEvent({required this.deviceId});
 }
