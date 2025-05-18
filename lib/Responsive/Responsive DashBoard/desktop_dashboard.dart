@@ -670,6 +670,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
               const SizedBox(height: 20),
               // Add Connected Devices section
               _buildConnectedDevicesSection(),
+              
+              // Add All Device Files section 
+              _buildAllDeviceFilesSection(),
             ],
           ),
         ),
@@ -1164,6 +1167,143 @@ class _FileManagerPageState extends State<FileManagerPage> {
     // Cancel the permission request subscription
     _permissionRequestSubscription?.cancel();
     super.dispose();
+  }
+
+  // Add this to desktop_dashboard.dart
+  Widget _buildAllDeviceFilesSection() {
+    return Consumer<ConnectionService>(
+      builder: (context, connectionService, child) {
+        final deviceFiles = connectionService.deviceFiles;
+        
+        if (deviceFiles.isEmpty) {
+          return SizedBox.shrink(); // Don't show section if no files
+        }
+        
+        return Container(
+          padding: const EdgeInsets.all(16),
+          margin: const EdgeInsets.only(top: 20),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.primary,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Files from Connected Devices',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 16),
+              for (final entry in deviceFiles.entries)
+                _buildDeviceFilesCard(entry.key, entry.value),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDeviceFilesCard(String deviceId, Map<String, dynamic> deviceData) {
+    final deviceName = deviceData['name'] ?? 'Unknown Device';
+    final files = List<Map<String, dynamic>>.from(deviceData['files'] ?? []);
+    
+    // Only show first few files
+    final displayFiles = files.length > 5 ? files.sublist(0, 5) : files;
+    
+    return Card(
+      margin: EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ListTile(
+            leading: Icon(Icons.devices_other),
+            title: Text(deviceName),
+            subtitle: Text('${files.length} files available'),
+            trailing: TextButton(
+              child: Text('View All'),
+              onPressed: () => _openRemoteFilesScreen(deviceId, deviceName, files),
+            ),
+          ),
+          Divider(),
+          ...displayFiles.map((file) {
+            final isDir = file['isDirectory'] ?? false;
+            return ListTile(
+              dense: true,
+              leading: Icon(
+                isDir ? Icons.folder : _getFileIcon(file['name']),
+                size: 20,
+                color: isDir ? Colors.amber : Colors.blue,
+              ),
+              title: Text(file['name'], overflow: TextOverflow.ellipsis),
+              trailing: TextButton.icon(
+                icon: Icon(Icons.visibility, size: 16),
+                label: Text('View'),
+                onPressed: () => _viewRemoteFile(deviceId, deviceName, file),
+              ),
+            );
+          }).toList(),
+          if (files.length > 5)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Text('... and ${files.length - 5} more files'),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // Add these helper methods
+  void _openRemoteFilesScreen(String deviceId, String deviceName, List<Map<String, dynamic>> files) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RemoteFilesScreen(
+          deviceId: deviceId,
+          deviceName: deviceName,
+          initialFiles: files,
+          initialPath: '',
+        ),
+      ),
+    );
+  }
+
+  void _viewRemoteFile(String deviceId, String deviceName, Map<String, dynamic> file) {
+    // Show file details or navigate to directory
+    if (file['isDirectory'] == true) {
+      final connectionService = Provider.of<ConnectionService>(context, listen: false);
+      connectionService.requestRemoteFileList(deviceId, file['path']);
+    } else {
+      // Show download dialog
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(file['name']),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Do you want to download this file?'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              child: Text('Cancel'),
+              onPressed: () => Navigator.pop(context),
+            ),
+            ElevatedButton.icon(
+              icon: Icon(Icons.download),
+              label: Text('Download'),
+              onPressed: () {
+                Navigator.pop(context);
+                final connectionService = Provider.of<ConnectionService>(context, listen: false);
+                connectionService.requestRemoteFile(deviceId, file['path']);
+              },
+            ),
+          ],
+        ),
+      );
+    }
   }
 }
 
