@@ -3,13 +3,23 @@ import 'package:datavault/theme/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_size/window_size.dart';
+import 'package:datavault/services/connection_service.dart';
+import 'package:provider/provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   setWindowMinSize(const Size(600, 800));
   SharedPreferences prefs = await SharedPreferences.getInstance();
   String? savedPin = prefs.getString('userPin');
-  runApp(MyApp(savedPin: savedPin));
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ConnectionService()),
+        // Add other providers here
+      ],
+      child: MyApp(savedPin: savedPin),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {

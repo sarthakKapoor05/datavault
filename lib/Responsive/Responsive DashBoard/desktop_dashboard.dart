@@ -1,3 +1,4 @@
+import 'dart:convert'; // Add this import for jsonEncode
 import 'dart:io';
 import 'package:datavault/Scrrens/downloads_screen.dart';
 import 'package:datavault/Scrrens/settings_screen.dart';
@@ -9,6 +10,8 @@ import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:datavault/utils/storage_manager.dart'; // Add this import
 import 'package:intl/intl.dart'; // Add this import for date formatting
+import 'package:datavault/services/connection_service.dart';
+import 'package:provider/provider.dart';
 
 class DesktopDashboard extends StatelessWidget {
   const DesktopDashboard({super.key});
@@ -483,6 +486,40 @@ class _FileManagerPageState extends State<FileManagerPage> {
           'Files',
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
         ),
+        actions: [
+          // Add connection status indicator
+          Consumer<ConnectionService>(
+            builder: (context, connectionService, child) {
+              return Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: connectionService.isConnected
+                    ? Row(
+                        children: [
+                          Icon(Icons.wifi, color: Colors.green),
+                          SizedBox(width: 8),
+                          Text('Connected'),
+                        ],
+                      )
+                    : TextButton.icon(
+                        icon: Icon(Icons.wifi_off, color: Colors.red),
+                        label: Text('Connect'),
+                        onPressed: () async {
+                          try {
+                            await connectionService.connect('192.168.18.226');
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Connected to server')),
+                            );
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Failed to connect: $e')),
+                            );
+                          }
+                        },
+                      ),
+              );
+            },
+          ),
+        ],
         backgroundColor: Theme.of(context).colorScheme.background,
         elevation: 0,
       ),
@@ -619,6 +656,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 children:
                     sources.map((source) => _buildSourceTile(source)).toList(),
               ),
+              const SizedBox(height: 20),
+              // Add Connected Devices section
+              _buildConnectedDevicesSection(),
             ],
           ),
         ),
@@ -788,6 +828,174 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   void openFile(PlatformFile file) {
     OpenFile.open(file.path);
+  }
+
+  // Add import for connection service
+  // import 'package:datavault/services/connection_service.dart';
+  // import 'package:provider/provider.dart';
+
+  // Add this widget to show connected devices
+  Widget _buildConnectedDevicesSection() {
+    return Consumer<ConnectionService>(
+      builder: (context, connectionService, child) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.primary,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Connected Devices',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  connectionService.isConnected 
+                    ? TextButton.icon(
+                        icon: Icon(Icons.refresh),
+                        label: Text('Refresh'),
+                        onPressed: () {
+                          connectionService.channel?.sink.add(
+                            jsonEncode({"type": "get_connected_devices"})
+                          );
+                        },
+                      )
+                    : TextButton.icon(
+                        icon: Icon(Icons.wifi),
+                        label: Text('Connect'),
+                        onPressed: () async {
+                          try {
+                            await connectionService.connect('192.168.18.226');
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Connected to server'))
+                            );
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Failed to connect: $e'))
+                            );
+                          }
+                        },
+                      ),
+                ],
+              ),
+              SizedBox(height: 16),
+              
+              connectionService.isConnected
+                ? connectionService.connectedClients.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32.0),
+                        child: Column(
+                          children: [
+                            Icon(Icons.devices, size: 48, color: Colors.grey),
+                            SizedBox(height: 16),
+                            Text('No devices found nearby'),
+                          ],
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      physics: NeverScrollableScrollPhysics(),
+                      itemCount: connectionService.connectedClients.length,
+                      separatorBuilder: (context, index) => Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final device = connectionService.connectedClients[index];
+                        
+                        // Don't show own device
+                        if (device['id'] == connectionService.deviceId) {
+                          return SizedBox.shrink();
+                        }
+                        
+                        return ListTile(
+                          leading: Icon(Icons.devices_other, color: Colors.blue),
+                          title: Text(device['name'] ?? 'Unknown Device'),
+                          subtitle: Text('Device ID: ${device['id']}'),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              TextButton.icon(
+                                icon: Icon(Icons.folder_open, size: 16),
+                                label: Text('Browse Files'),
+                                onPressed: () {
+                                  _showRemoteFileBrowser(context, device['id'], device['name']);
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    )
+                : Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Column(
+                        children: [
+                          Icon(Icons.wifi_off, size: 48, color: Colors.grey),
+                          SizedBox(height: 16),
+                          Text('Not connected to network'),
+                          SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            icon: Icon(Icons.wifi),
+                            label: Text('Connect'),
+                            onPressed: () async {
+                              try {
+                                await connectionService.connect('192.168.18.226');
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Connected to server'))
+                                );
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Failed to connect: $e'))
+                                );
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+            ],
+          ),
+        );
+      }
+    );
+  }
+
+  // Add this method to show remote file browser
+  void _showRemoteFileBrowser(BuildContext context, String deviceId, String deviceName) {
+    final connectionService = Provider.of<ConnectionService>(context, listen: false);
+    
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text('Requesting Files'),
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Text('Loading files from $deviceName...'),
+          ],
+        ),
+      ),
+    );
+    
+    // Request file list
+    connectionService.requestRemoteFileList(deviceId).then((_) {
+      // Dialog will be closed by the stream listener when data arrives
+    }).catchError((error) {
+      // Close dialog and show error
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error requesting files: $error'))
+      );
+    });
   }
 }
 
