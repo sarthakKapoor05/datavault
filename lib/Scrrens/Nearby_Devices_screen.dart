@@ -11,6 +11,8 @@ import 'package:shared_preferences/shared_preferences.dart'; // Add this package
 import 'package:open_file/open_file.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'dart:typed_data';
+import 'package:datavault/services/connection_service.dart';
+import 'package:provider/provider.dart';
 
 enum FileTransferMode { idle, sending, receiving }
 
@@ -33,35 +35,17 @@ class _ShareScreenState extends State<ShareScreen>
 
   void startScanning() async {
     try {
-      // Close existing connection if any
-      if (_channel != null) {
-        await _channel?.sink.close();
-      }
-
-      // Connect to local WebSocket server on port 8080
-      final wsUrl = Uri.parse('ws://192.168.18.226:8080');
-      _channel = WebSocketChannel.connect(wsUrl);
-
-      // Create a broadcast stream that can be listened to multiple times
-      _broadcastStream = _channel!.stream.asBroadcastStream();
-
+      final connectionService = Provider.of<ConnectionService>(context, listen: false);
+      await connectionService.connect('192.168.18.226');
+      
       setState(() {
-        _isConnected = true;
+        _isConnected = connectionService.isConnected;
       });
-      _startPingTimer(); // Start the ping timer
-
-      // Register this device WITH the stored deviceId
-      _channel!.sink.add(
-        jsonEncode({
-          "type": "register_device",
-          "deviceName": "G16",
-          "deviceId": _deviceId, // Include the stored deviceId if available
-        }),
-      );
-
-      // Request the current list of devices
-      _channel!.sink.add(jsonEncode({"type": "get_connected_devices"}));
-
+      
+      // Get broadcast stream from service
+      _broadcastStream = connectionService.broadcastStream;
+      _channel = connectionService.channel;
+      
       // Listen for messages from the server using our broadcast stream
       _broadcastStream!.listen(
         (message) {
