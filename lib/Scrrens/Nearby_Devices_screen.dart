@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'package:datavault/Scrrens/file_transfer_screen.dart';
+import 'package:datavault/Scrrens/remote_file_browser.dart';
 import 'package:datavault/utils/storage_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +13,7 @@ import 'package:open_file/open_file.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'dart:typed_data';
 import 'package:datavault/utils/event_bus.dart';
+import 'package:path/path.dart' as path;
 
 enum FileTransferMode { idle, sending, receiving }
 
@@ -107,6 +109,21 @@ class _ShareScreenState extends State<ShareScreen>
                   ),
                 );
               }
+
+              // Handle file list response
+              if (data['type'] == 'file_list') {
+                _handleFileListResponse(data);
+              }
+
+              // Handle file list request
+              if (data['type'] == 'request_file_list') {
+                _handleFileListRequest(data);
+              }
+              
+              // Handle specific file request
+              if (data['type'] == 'request_file') {
+                _handleSpecificFileRequest(data);
+              }
             }
             // Handle binary data (file content)
             else if (message is List<int> && _expectedFile != null) {
@@ -164,440 +181,604 @@ class _ShareScreenState extends State<ShareScreen>
     _controller = AnimationController(
       duration: const Duration(seconds: 5),
       vsync: this,
-    )..repeat(); // Continuous waving
-
-    // Load device ID at startup
+    );
+    // Load device ID and name on startup
     _loadDeviceId();
-
-    // Load device name at startup
     _loadDeviceName();
-    // Listen for device name changes
-    eventBus.on<DeviceNameChangedEvent>().listen((event) {
-      setState(() {
-        deviceName = event.newName;
-      });
-    });
   }
 
-  // Load stored device ID
-  Future<void> _loadDeviceId() async {
+  @override
+  void dispose() {
+    _channel?.sink.close();
+    _pingTimer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  // Load device ID from storage
+  void _loadDeviceId() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _deviceId = prefs.getString('device_id');
+      _deviceId = prefs.getString('deviceId');
     });
   }
 
-  // Save device ID for future sessions
-  Future<void> _saveDeviceId(String deviceId) async {
+  // Save device ID to storage
+  void _saveDeviceId(String deviceId) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('device_id', deviceId);
+    await prefs.setString('deviceId', deviceId);
     setState(() {
       _deviceId = deviceId;
     });
   }
 
-  // Load stored device name
-  Future<void> _loadDeviceName() async {
+  // Load device name from storage
+  void _loadDeviceName() async {
     final prefs = await SharedPreferences.getInstance();
-    final name = prefs.getString('device_name');
     setState(() {
-      deviceName =
-          name ?? Platform.localHostname; // Fallback to system hostname
+      deviceName = prefs.getString('deviceName') ?? Platform.localHostname;
     });
   }
 
-  // Handle incoming file data
-  Future<void> _handleIncomingFile(List<int> fileData) async {
-    try {
-      // Update transfer mode
-      setState(() {
-        _transferMode = FileTransferMode.receiving;
-      });
-
-      // Get sender/client info from _expectedFile
-      final senderId = _expectedFile?['fromId'] ?? 'unknown_sender';
-      final fileName = _expectedFile?['filename'] ?? 'file.bin';
-      
-      // Find the sender's device name from connected clients
-      String senderName = 'unknown_device';
-      for (var client in _connectedClients) {
-        if (client['id'] == senderId) {
-          senderName = client['name'] ?? 'unknown_device';
-          break;
-        }
-      }
-      
-      // Make sure the folder name is valid for the file system
-      String folderName = _sanitizeFolderName(senderName);
-
-      // Use the default storage location from StorageManager with device name as subfolder
-      final decryptedBytes = decryptFileBytes(fileData);
-      final file = await StorageManager.saveToDefaultStorage(
-        fileName,
-        Uint8List.fromList(decryptedBytes),
-        subfolder: folderName, // Use device name instead of ID
-      );
-
-      // Show success notification
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('File received: $fileName from $senderName'),
-          action: SnackBarAction(
-            label: 'Open',
-            onPressed: () async {
-              await OpenFile.open(file.path);
-            },
-          ),
-        ),
-      );
-
-      // Clear the expected file metadata
-      setState(() {
-        _expectedFile = null;
-        // Reset transfer mode after a delay
-        Future.delayed(Duration(seconds: 2), () {
-          if (mounted) {
-            setState(() {
-              _transferMode = FileTransferMode.idle;
-            });
-          }
-        });
-      });
-    } catch (e) {
-      print('Error saving received file: $e');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to save file: $e')));
-
-      setState(() {
-        _transferMode = FileTransferMode.idle;
-      });
-    }
+  // Save device name to storage
+  void _saveDeviceName(String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('deviceName', name);
   }
 
-  // Add this method to send a file to another client
-  Future<void> sendFileToClient(String targetId) async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      allowMultiple: true, // Allow multiple file selection
-    );
-
-    if (result != null) {
-      // Update UI to show progress
-      setState(() {
-        _transferMode = FileTransferMode.sending;
-      });
-
-      // Send each file
-      for (var file in result.files) {
-        if (file.path != null) {
-          try {
-            await _sendSingleFile(file, targetId);
-          } catch (e) {
-            print('Error sending file: $e');
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Failed to send ${file.name}: $e')),
-            );
-          }
-        }
-      }
-
-      // Return to idle mode after sending
-      setState(() {
-        _transferMode = FileTransferMode.idle;
-      });
-    }
-  }
-
-  Future<void> _sendSingleFile(PlatformFile fileInfo, String targetId) async {
-    File file = File(fileInfo.path!);
-    final fileBytes = await file.readAsBytes();
-    final encryptedBytes = encryptFileBytes(fileBytes);
-
-    final fileName = fileInfo.name;
-
-    // Send metadata with encrypted size
-    _channel!.sink.add(
-      jsonEncode({
-        "type": "file_metadata",
-        "filename": fileName,
-        "size": encryptedBytes.length,
-        "contentType": "application/octet-stream",
-        "targetId": targetId,
-      }),
-    );
-
-    // Wait for ready_for_file event from server
-    Completer<void> sendCompleter = Completer<void>();
-
-    StreamSubscription? subscription;
-    subscription = _broadcastStream?.listen((message) {
-      if (message is String) {
-        final data = jsonDecode(message);
-        if (data['type'] == 'ready_for_file') {
-          // Send the actual encrypted file data
-          _channel!.sink.add(encryptedBytes); // <--- FIXED
-
-          Future.delayed(Duration(milliseconds: 500), () {
-            if (!sendCompleter.isCompleted) {
-              sendCompleter.complete();
-            }
-          });
-
-          subscription?.cancel();
-        }
-      }
-    });
-
-    Future.delayed(Duration(seconds: 10), () {
-      if (!sendCompleter.isCompleted) {
-        sendCompleter.completeError('Timeout waiting for server response');
-        subscription?.cancel();
-      }
-    });
-
-    await sendCompleter.future;
-  }
-
-  // Start ping timer to keep connection alive and detect disconnection
+  // Start the ping timer to keep the connection alive
   void _startPingTimer() {
     _pingTimer?.cancel();
-    _pingTimer = Timer.periodic(Duration(seconds: 15), (timer) {
-      if (_channel != null) {
-        try {
-          // Send a ping
-          _channel!.sink.add(jsonEncode({"type": "ping"}));
-        } catch (e) {
-          // If ping fails, update connection status
-          setState(() {
-            _isConnected = false;
-          });
-          _pingTimer?.cancel();
-        }
+    _pingTimer = Timer.periodic(Duration(seconds: 10), (timer) {
+      if (_channel != null && _isConnected) {
+        _channel!.sink.add(jsonEncode({"type": "ping"}));
       }
     });
   }
 
-  @override
-  void dispose() {
-    _pingTimer?.cancel();
-    _controller.dispose();
-    _channel?.sink.close();
-    super.dispose();
+  // Method to pick and send file to the selected device
+  // void _pickAndSendFile(String? deviceId) async {
+  //   if (deviceId == null) return;
+
+  //   // Request file from the user
+  //   final result = await FilePicker.platform.pickFiles(
+  //     allowMultiple: false,
+  //     type: FileType.any,
+  //   );
+
+  //   if (result != null && result.files.isNotEmpty) {
+  //     final filePath = result.files.first.path;
+  //     final fileName = result.files.first.name;
+
+  //     if (filePath != null) {
+  //       // Encrypt the file before sending
+  //       final encryptedFile = await _encryptFile(filePath);
+
+  //       // Send the file to the selected device
+  //       _sendFile(deviceId, encryptedFile, fileName);
+  //     }
+  //   }
+  // }
+
+  // Method to encrypt the file
+  Future<List<int>> _encryptFile(String filePath) async {
+    // Generate a random key and IV for encryption
+    final key = encrypt.Key.fromLength(32);
+    final iv = encrypt.IV.fromLength(16);
+
+    // Read the file data
+    final fileData = await File(filePath).readAsBytes();
+
+    // Encrypt the file data
+    final encrypter = encrypt.Encrypter(encrypt.AES(key));
+    final encryptedData = encrypter.encryptBytes(fileData, iv: iv);
+
+    // TODO: Store the key and IV securely, and send them to the recipient device
+
+    return encryptedData.bytes;
+  }
+
+  // Method to send the file to the selected device
+  void _sendFile(String deviceId, List<int> fileData, String fileName) {
+    if (_channel != null && _isConnected) {
+      // Send file metadata first
+      _channel!.sink.add(jsonEncode({
+        "type": "file_metadata",
+        "deviceId": deviceId,
+        "filename": fileName,
+        "size": fileData.length,
+      }));
+
+      // Send the actual file data
+      _channel!.sink.add(fileData);
+    }
+  }
+
+  // Method to handle incoming file data
+  void _handleIncomingFile(List<int> fileData) async {
+    // TODO: Implement file handling logic (e.g., save to device, decrypt, etc.)
+    print('Received file data: ${fileData.length} bytes');
+
+    // For demonstration, we'll just show the file data as a notification
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Received file: ${_expectedFile!['filename']} (${fileData.length} bytes)'),
+      ),
+    );
+
+    // Reset expected file info
+    setState(() {
+      _expectedFile = null;
+    });
+  }
+
+  // Method to handle file list response from the server
+  void _handleFileListResponse(Map<String, dynamic> data) {
+    final List<dynamic> files = data['files'];
+    final String sourceId = data['sourceId'];
+    final String sourcePath = data['sourcePath'] ?? '';
+    final String sourceName = data['sourceName'] ?? 'Unknown Device';
+    
+    // Navigate to the remote file browser screen
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RemoteFileBrowserScreen(
+          clientId: sourceId,
+          clientName: sourceName,
+          initialFiles: files.map<Map<String, dynamic>>((file) => 
+            Map<String, dynamic>.from(file)
+          ).toList(),
+          initialPath: sourcePath,
+          onRequestPath: (String path) => _requestRemoteFileList(sourceId, path),
+          onRequestFile: (String path) => _requestRemoteFile(sourceId, path),
+          websocketChannel: _channel!,
+        ),
+      ),
+    );
+  }
+
+  // Method to handle file list request from the server
+  void _handleFileListRequest(Map<String, dynamic> data) {
+    // TODO: Implement file list request handling logic
+    print('File list requested by: ${data['fromId']}');
+  }
+
+  // Method to handle specific file request from the server
+  void _handleSpecificFileRequest(Map<String, dynamic> data) {
+    // TODO: Implement specific file request handling logic
+    print('Specific file requested: ${data['filename']}');
+  }
+
+  // Method to request file list
+  Future<void> _requestRemoteFileList(String targetId, [String? path]) async {
+    if (_channel == null || !_isConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Please connect to the server first')),
+      );
+      return;
+    }
+    
+    _channel!.sink.add(jsonEncode({
+      "type": "list_files",
+      "targetId": targetId,
+      "path": path
+    }));
+  }
+
+  // Add your file encryption method
+  List<int> encryptFileBytes(List<int> bytes) {
+    // You can implement encryption here if needed
+    return bytes; // Return unencrypted for now
+  }
+
+  // Pick and send a file
+  Future<void> _pickAndSendFile(String targetDeviceId) async {
+    try {
+      final result = await FilePicker.platform.pickFiles();
+      if (result != null) {
+        final file = File(result.files.single.path!);
+        final fileName = file.path.split('/').last;
+        
+        setState(() {
+          _transferMode = FileTransferMode.sending;
+        });
+        
+        // Read file
+        final bytes = await file.readAsBytes();
+        
+        // Encrypt file data
+        final encryptedBytes = encryptFileBytes(bytes);
+        
+        // Send file metadata
+        _channel!.sink.add(jsonEncode({
+          "type": "file_metadata",
+          "filename": fileName,
+          "size": encryptedBytes.length,
+          "contentType": "application/octet-stream",
+          "targetId": targetDeviceId,
+          "fromId": _deviceId,
+        }));
+        
+        // Small delay to ensure metadata is processed
+        await Future.delayed(Duration(milliseconds: 100));
+        
+        // Send file content
+        _channel!.sink.add(encryptedBytes);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('File sent: $fileName')),
+        );
+        
+        setState(() {
+          _transferMode = FileTransferMode.idle;
+        });
+      }
+    } catch (e) {
+      print('Error picking or sending file: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error sending file: $e')),
+      );
+      setState(() {
+        _transferMode = FileTransferMode.idle;
+      });
+    }
+  }
+
+  // Add this method to request a specific file from remote device
+  Future<void> _requestRemoteFile(String targetId, String filePath) async {
+    if (_channel == null || !_isConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Please connect to the server first')),
+      );
+      return;
+    }
+    
+    // Extract filename from path
+    final fileName = path.basename(filePath);
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Requesting file: $fileName')),
+    );
+    
+    setState(() {
+      _transferMode = FileTransferMode.receiving;
+    });
+    
+    _channel!.sink.add(jsonEncode({
+      "type": "request_file",
+      "targetId": targetId,
+      "path": filePath,
+      "filename": fileName,
+      "requesterId": _deviceId
+    }));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.background,
+      appBar: AppBar(
+        title: Text('Nearby Devices'),
+        actions: [
+          // Connection status indicator
+          Container(
+            padding: EdgeInsets.all(8),
+            child: _isConnected
+                ? Row(
+                    children: [
+                      Icon(Icons.wifi, color: Colors.green),
+                      SizedBox(width: 4),
+                      Text('Connected', style: TextStyle(color: Colors.green)),
+                    ],
+                  )
+                : TextButton.icon(
+                    icon: Icon(Icons.wifi_off, color: Colors.red),
+                    label: Text('Connect', style: TextStyle(color: Colors.red)),
+                    onPressed: startScanning,
+                  ),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Connection status indicator bar
+            // Device name section
             Container(
-              width: double.infinity,
-              padding: EdgeInsets.symmetric(vertical: 6, horizontal: 16),
-              color: _isConnected ? Colors.green.shade700 : Colors.red.shade700,
+              padding: EdgeInsets.all(16),
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    _isConnected ? Icons.wifi : Icons.wifi_off,
-                    color: Colors.white,
-                    size: 16,
-                  ),
-                  SizedBox(width: 8),
-                  Text(
-                    _isConnected ? 'Connected to Server' : 'Disconnected',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
+                  Icon(Icons.devices, size: 24),
+                  SizedBox(width: 16),
+                  Expanded(
+                    child: InkWell(
+                      onTap: _showChangeDeviceNameDialog,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Your Device Name',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context).colorScheme.secondary.withOpacity(0.8),
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  deviceName ?? Platform.localHostname,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Icon(Icons.edit, size: 16),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
 
-            // Transfer mode indicator (only show when not idle)
+            // Transfer status indicator (when active)
             if (_transferMode != FileTransferMode.idle)
               Container(
-                width: double.infinity,
-                padding: EdgeInsets.symmetric(vertical: 4, horizontal: 16),
-                color:
-                    _transferMode == FileTransferMode.sending
-                        ? Colors.amber.shade700
-                        : Colors.green.shade700,
+                padding: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                color: _transferMode == FileTransferMode.sending
+                    ? Colors.blue.withOpacity(0.2)
+                    : Colors.green.withOpacity(0.2),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
                       _transferMode == FileTransferMode.sending
                           ? Icons.upload
                           : Icons.download,
-                      color: Colors.white,
                       size: 16,
+                      color: _transferMode == FileTransferMode.sending
+                          ? Colors.blue
+                          : Colors.green,
                     ),
                     SizedBox(width: 8),
                     Text(
                       _transferMode == FileTransferMode.sending
-                          ? 'Sending Mode'
-                          : 'Receiving Mode',
+                          ? 'Sending file...'
+                          : 'Receiving file...',
                       style: TextStyle(
-                        color: Colors.white,
                         fontWeight: FontWeight.bold,
+                        color: _transferMode == FileTransferMode.sending
+                            ? Colors.blue
+                            : Colors.green,
                       ),
                     ),
                     Spacer(),
-                    TextButton(
-                      child: Text(
-                        'Cancel',
-                        style: TextStyle(color: Colors.white),
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: _transferMode == FileTransferMode.sending
+                            ? Colors.blue
+                            : Colors.green,
                       ),
-                      onPressed: () {
-                        setState(() {
-                          _transferMode = FileTransferMode.idle;
-                        });
-                      },
                     ),
                   ],
                 ),
               ),
 
-            const Padding(
-              padding: EdgeInsets.all(16.0),
-              child: Text(
-                'Nearby Devices',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF50C2C9),
-                ),
-              ),
-            ),
+            // Connected devices section
             Expanded(
-              flex: 2,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  ...List.generate(4, (index) {
-                    double radius = (index + 1) * 50;
-                    return AnimatedBuilder(
-                      animation: _controller,
-                      builder: (context, child) {
-                        double scale =
-                            1.0 +
-                            sin((_controller.value * 2 * pi) + index) * 0.05;
-                        return Transform.scale(
-                          scale: scale,
-                          child: Container(
-                            width: radius * 2,
-                            height: radius * 2,
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.secondary.withOpacity(0.3),
-                                width: 1.5,
+              child: _isConnected
+                  ? _connectedClients.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.devices_other, size: 64, color: Colors.grey),
+                              SizedBox(height: 16),
+                              Text(
+                                'No devices found nearby',
+                                style: TextStyle(fontSize: 16, color: Colors.grey),
                               ),
-                              shape: BoxShape.circle,
-                            ),
+                              SizedBox(height: 8),
+                              Text(
+                                'Make sure other devices are connected to the same network',
+                                style: TextStyle(fontSize: 12, color: Colors.grey),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
                           ),
-                        );
-                      },
-                    );
-                  }),
-                  GestureDetector(
-                    onTap: () async {
-                      if (_isConnected) {
-                        // Disconnect from server
-                        await _channel?.sink.close();
-                        setState(() {
-                          _isConnected = false;
-                          _connectedClients
-                              .clear(); // Remove all connected devices
-                        });
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Disconnected from server')),
-                        );
-                      } else {
-                        // Connect to server
-                        startScanning();
-                      }
-                    },
-                    child: Container(
-                      width: 60,
-                      height: 60,
-                      decoration: BoxDecoration(
-                        color: _isConnected ? Colors.green : Color(0xFF50C2C9),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        _isConnected ? Icons.wifi : Icons.sync,
-                        color: Colors.white,
-                        size: 30,
+                        )
+                      : ListView(
+                          padding: EdgeInsets.all(16),
+                          children: [
+                            Text(
+                              'Nearby Devices',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            ...List.generate(
+                              _connectedClients.length,
+                              (index) => _connectedDeviceCard(_connectedClients[index]),
+                            ),
+                          ],
+                        )
+                  : Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.wifi_off, size: 64, color: Colors.grey),
+                          SizedBox(height: 16),
+                          Text(
+                            'Not connected',
+                            style: TextStyle(fontSize: 18, color: Colors.grey),
+                          ),
+                          SizedBox(height: 24),
+                          ElevatedButton.icon(
+                            icon: Icon(Icons.wifi),
+                            label: Text('Connect to Network'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Color(0xFF50C2C9),
+                              foregroundColor: Colors.white,
+                              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                            ),
+                            onPressed: startScanning,
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                ],
-              ),
             ),
-            // Display connected clients section
-            if (_connectedClients.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        'Connected Clients',
+          ],
+        ),
+      ),
+      floatingActionButton: _isConnected
+          ? FloatingActionButton(
+              onPressed: _showDeviceSelector,
+              backgroundColor: Color(0xFF50C2C9),
+              child: Icon(Icons.send),
+              tooltip: 'Send File',
+            )
+          : null,
+    );
+  }
+
+  // Method to show device selection dialog
+  void _showDeviceSelector() {
+    if (_connectedClients.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No devices available to send files to')),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.background,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'Select a device to send file to',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+          ),
+          Divider(height: 1),
+          Expanded(
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: _connectedClients.length,
+              itemBuilder: (context, index) {
+                final client = _connectedClients[index];
+                if (client['deviceId'] == _deviceId) {
+                  return SizedBox.shrink(); // Don't show own device
+                }
+                return ListTile(
+                  leading: Icon(Icons.devices, color: Colors.blue),
+                  title: Text(client['deviceName'] ?? 'Unknown Device'),
+                  subtitle: Text(client['deviceId'] ?? ''),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickAndSendFile(client['deviceId']);
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Add this method to build connected device cards
+  Widget _connectedDeviceCard(Map<String, dynamic> device) {
+    // Don't show our own device in the list
+    if (_deviceId != null && device['deviceId'] == _deviceId) {
+      return SizedBox.shrink(); // Hide our own device
+    }
+
+    return Card(
+      margin: EdgeInsets.symmetric(vertical: 8),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.devices, size: 24, color: Colors.blue),
+                ),
+                SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        device['deviceName'] ?? 'Unknown Device',
                         style: TextStyle(
-                          fontSize: 20,
+                          fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF50C2C9),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: 260, // Set this to the height of your device card
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _connectedClients.length,
-                        itemBuilder: (context, index) {
-                          return _connectedDeviceCard(_connectedClients[index]);
-                        },
+                      Text(
+                        'ID: ${device['deviceId']?.substring(0, 8) ?? 'Unknown'}...',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            // Recent devices section
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      'Recent',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    ],
                   ),
-                  // Expanded(
-                  //   child: ListView.builder(
-                  //     scrollDirection: Axis.horizontal,
-                  //     itemCount: recentDevices.length,
-                  //     itemBuilder: (context, index) {
-                  //       return _recentDeviceCard(recentDevices[index]);
-                  //     },
-                  //   ),
-                  // ),
-                ],
-              ),
+                ),
+              ],
+            ),
+            SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                ElevatedButton.icon(
+                  icon: Icon(Icons.upload, size: 16),
+                  label: Text('Send File'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Color(0xFF50C2C9),
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () => _pickAndSendFile(device['deviceId']),
+                ),
+                ElevatedButton.icon(
+                  icon: Icon(Icons.folder_open, size: 16),
+                  label: Text('Browse Files'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.amber,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () => _requestRemoteFileList(device['deviceId']),
+                ),
+              ],
             ),
           ],
         ),
@@ -605,192 +786,52 @@ class _ShareScreenState extends State<ShareScreen>
     );
   }
 
-  // Navigate to file transfer screen
-  void navigateToFileTransfer(String deviceId) async {
-    if (_channel == null || !_isConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please connect to the server first')),
-      );
-      return;
-    }
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder:
-            (context) => FileTransferScreen(
-              deviceId: deviceId,
-              channel: _channel!,
-              broadcastStream: _broadcastStream,
-            ),
-      ),
-    );
-  }
-
-  // Card for connected devices
-  Widget _connectedDeviceCard(Map<String, dynamic> device) {
-    // Don't show our own device in the list
-    if (_deviceId != null && device['deviceId'] == _deviceId) {
-      return SizedBox.shrink(); // Hide our own device
-    }
-
-    return Container(
-      width: 330,
-      height: 260,
-      margin: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        color: Theme.of(context).colorScheme.primary,
-        boxShadow: [
-          BoxShadow(color: Colors.black26, blurRadius: 5, offset: Offset(0, 2)),
-        ],
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.max,
-        children: [
-          Icon(Icons.devices, size: 30, color: Colors.white),
-          const SizedBox(height: 8),
-          Text(
-            device['name'] ?? 'Unknown',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
+  // Show dialog to change device name
+  void _showChangeDeviceNameDialog() {
+    final nameController = TextEditingController(text: deviceName);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Change Device Name'),
+        content: TextField(
+          controller: nameController,
+          decoration: InputDecoration(
+            labelText: 'Device Name',
+            border: OutlineInputBorder(),
           ),
-          Text(
-            device['id'] ?? 'Unknown ID',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: Theme.of(context).colorScheme.secondary),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            child: Text('Cancel'),
+            onPressed: () => Navigator.pop(context),
           ),
-          const SizedBox(height: 8),
-
-          // Always show both actions
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ElevatedButton.icon(
-                icon: Icon(Icons.upload, size: 16),
-                label: Text('Send File', style: TextStyle(fontSize: 12)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.amber,
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                ),
-                onPressed: () => sendFileToClient(device['id']),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _recentDeviceCard(Map<String, String> device) {
-    return Container(
-      width: 130,
-      margin: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        color: Theme.of(context).colorScheme.primary,
-        boxShadow: [
-          BoxShadow(color: Colors.black26, blurRadius: 5, offset: Offset(0, 2)),
-        ],
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.devices,
-            size: 30,
-            color: Theme.of(context).colorScheme.secondary,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            device['name']!,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          Text(
-            device['id']!,
-            style: TextStyle(color: Theme.of(context).colorScheme.secondary),
-          ),
-          const SizedBox(height: 8),
           ElevatedButton(
-            onPressed: () {},
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Color(0xFF50C2C9),
-              padding: EdgeInsets.symmetric(horizontal: 20),
-            ),
-            child: Text(
-              'Connect',
-              style: TextStyle(color: Theme.of(context).colorScheme.secondary),
-            ),
+            child: Text('Save'),
+            onPressed: () {
+              final newName = nameController.text.trim();
+              if (newName.isNotEmpty) {
+                setState(() {
+                  deviceName = newName;
+                });
+                // Broadcast device name change
+                eventBus.fire(DeviceNameChangedEvent(newName));
+                // Save to preferences
+                _saveDeviceName(newName);
+                // Update on server
+                if (_channel != null && _isConnected) {
+                  _channel!.sink.add(jsonEncode({
+                    "type": "update_device_name",
+                    "deviceId": _deviceId,
+                    "deviceName": newName,
+                  }));
+                }
+              }
+              Navigator.pop(context);
+            },
           ),
         ],
       ),
     );
   }
-
-  // Add this method to _ShareScreenState
-  Future<void> updateDeviceName(String newName) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('device_name', newName);
-    setState(() {
-      deviceName = newName;
-    });
-
-    // If connected, send update to server
-    if (_channel != null && _isConnected) {
-      _channel!.sink.add(
-        jsonEncode({
-          "type": "update_device_name",
-          "deviceName": newName,
-          "deviceId": _deviceId,
-        }),
-      );
-    }
-  }
-}
-
-// Use a secure key in production!
-final _encryptionKey = encrypt.Key.fromUtf8(
-  'my32lengthsupersecretnooneknows!',
-); // 32 chars
-
-List<int> encryptFileBytes(List<int> bytes) {
-  final iv = encrypt.IV.fromSecureRandom(16); // Random IV for each file
-  final encrypter = encrypt.Encrypter(
-    encrypt.AES(_encryptionKey, mode: encrypt.AESMode.cbc),
-  );
-  final encrypted = encrypter.encryptBytes(bytes, iv: iv);
-  // Prepend IV to encrypted bytes
-  return [...iv.bytes, ...encrypted.bytes];
-}
-
-List<int> decryptFileBytes(List<int> encryptedBytes) {
-  // Extract IV from the first 16 bytes
-  final receivedIv = encrypt.IV(
-    Uint8List.fromList(encryptedBytes.sublist(0, 16)),
-  );
-  final encryptedData = encryptedBytes.sublist(16);
-  final encrypter = encrypt.Encrypter(
-    encrypt.AES(_encryptionKey, mode: encrypt.AESMode.cbc),
-  );
-  final decrypted = encrypter.decryptBytes(
-    encrypt.Encrypted(Uint8List.fromList(encryptedData)),
-    iv: receivedIv,
-  );
-  return decrypted;
-}
-
-// Add this helper method to sanitize folder names
-String _sanitizeFolderName(String name) {
-  // Replace invalid characters with underscores
-  final sanitized = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-  return sanitized.isNotEmpty ? sanitized : 'unknown_device';
 }
