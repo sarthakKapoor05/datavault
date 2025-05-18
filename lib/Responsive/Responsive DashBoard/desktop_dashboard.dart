@@ -917,17 +917,16 @@ class _FileManagerPageState extends State<FileManagerPage> {
                           leading: Icon(Icons.devices_other, color: Colors.blue),
                           title: Text(device['name'] ?? 'Unknown Device'),
                           subtitle: Text('Device ID: ${device['id']}'),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              TextButton.icon(
-                                icon: Icon(Icons.folder_open, size: 16),
-                                label: Text('Browse Files'),
-                                onPressed: () {
-                                  _showRemoteFileBrowser(context, device['id'], device['name']);
-                                },
-                              ),
-                            ],
+                          trailing: ElevatedButton.icon(
+                            icon: Icon(Icons.folder_open, size: 16),
+                            label: Text('Browse'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              foregroundColor: Colors.white,
+                            ),
+                            onPressed: () {
+                              _showRemoteFileBrowser(context, device['id'], device['name']);
+                            },
                           ),
                         );
                       },
