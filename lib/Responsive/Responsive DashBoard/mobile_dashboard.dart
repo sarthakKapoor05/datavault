@@ -79,7 +79,11 @@ class _FileManagerPageState extends State<FileManagerPage> {
       'color': Colors.blue,
     },
     {'title': 'Downloads', 'icon': Icons.download, 'color': Colors.blue},
-    {'title': 'Storage Settings', 'icon': Icons.storage, 'color': Color(0xFF50C2C9)},
+    {
+      'title': 'Storage Settings',
+      'icon': Icons.storage,
+      'color': Color(0xFF50C2C9),
+    },
   ];
 
   @override
@@ -110,7 +114,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     setState(() {
       _isLoadingStoragePath = true;
     });
-    
+
     try {
       final path = await StorageManager.getDefaultStoragePath();
       setState(() {
@@ -126,63 +130,60 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> _selectStorageLocation() async {
-  try {
-    final selectedDir = await FilePicker.platform.getDirectoryPath();
-    
-    if (selectedDir == null) return; // User canceled
-    
-    // Save the new storage location
-    final success = await StorageManager.setDefaultStoragePath(selectedDir);
-    
-    if (success) {
-      setState(() {
-        _currentStoragePath = selectedDir;
-      });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Storage location updated'),
-          action: SnackBarAction(
-            label: 'Reset',
-            onPressed: _resetToDefault,
-          ),
-        )
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update storage location'))
-      );
-    }
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Error: $e'))
-    );
-  }
-}
+    try {
+      final selectedDir = await FilePicker.platform.getDirectoryPath();
 
-Future<void> _resetToDefault() async {
-  try {
-    final documentsDir = await getApplicationDocumentsDirectory();
-    final defaultPath = '${documentsDir.path}/Downloads';
-    
-    // Save the default path
-    final success = await StorageManager.setDefaultStoragePath(defaultPath);
-    
-    if (success) {
-      setState(() {
-        _currentStoragePath = defaultPath;
-      });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Reset to default storage location'))
-      );
+      if (selectedDir == null) return; // User canceled
+
+      // Save the new storage location
+      final success = await StorageManager.setDefaultStoragePath(selectedDir);
+
+      if (success) {
+        setState(() {
+          _currentStoragePath = selectedDir;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Storage location updated'),
+            action: SnackBarAction(label: 'Reset', onPressed: _resetToDefault),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update storage location')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Error: $e'))
-    );
   }
-}
+
+  Future<void> _resetToDefault() async {
+    try {
+      final documentsDir = await getApplicationDocumentsDirectory();
+      final defaultPath = '${documentsDir.path}/Downloads';
+
+      // Save the default path
+      final success = await StorageManager.setDefaultStoragePath(defaultPath);
+
+      if (success) {
+        setState(() {
+          _currentStoragePath = defaultPath;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Reset to default storage location')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -281,17 +282,26 @@ Future<void> _resetToDefault() async {
                                 onPressed: () {
                                   showDialog(
                                     context: context,
-                                    builder: (context) => AlertDialog(
-                                      backgroundColor: Theme.of(context).colorScheme.primary,
-                                      title: Text('Received Files Location'),
-                                      content: Text('This is where files received from other devices will be stored.'),
-                                      actions: [
-                                        TextButton(
-                                          child: Text('OK'),
-                                          onPressed: () => Navigator.pop(context),
+                                    builder:
+                                        (context) => AlertDialog(
+                                          backgroundColor:
+                                              Theme.of(
+                                                context,
+                                              ).colorScheme.primary,
+                                          title: Text(
+                                            'Received Files Location',
+                                          ),
+                                          content: Text(
+                                            'This is where files received from other devices will be stored.',
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              child: Text('OK'),
+                                              onPressed:
+                                                  () => Navigator.pop(context),
+                                            ),
+                                          ],
                                         ),
-                                      ],
-                                    ),
                                   );
                                 },
                                 color: Theme.of(context).colorScheme.secondary,
@@ -299,7 +309,10 @@ Future<void> _resetToDefault() async {
                               SizedBox(width: 5),
                               TextButton.icon(
                                 icon: Icon(Icons.folder_open, size: 16),
-                                label: Text('Change', style: TextStyle(fontSize: 12)),
+                                label: Text(
+                                  'Change',
+                                  style: TextStyle(fontSize: 12),
+                                ),
                                 onPressed: _selectStorageLocation,
                                 style: TextButton.styleFrom(
                                   foregroundColor: Color(0xFF50C2C9),
@@ -318,7 +331,9 @@ Future<void> _resetToDefault() async {
                             _currentStoragePath!,
                             style: TextStyle(
                               fontSize: 10,
-                              color: Theme.of(context).colorScheme.secondary.withOpacity(0.7),
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.secondary.withOpacity(0.7),
                               fontFamily: 'monospace',
                             ),
                             maxLines: 1,
@@ -420,14 +435,42 @@ Future<void> _resetToDefault() async {
             );
 
             if (action == 'files') {
-              final result = await FilePicker.platform.pickFiles(
-                allowMultiple: true,
-              );
-              if (result == null) return;
+              try {
+                final result = await FilePicker.platform.pickFiles(
+                  allowMultiple: true,
+                  type: FileType.any,
+                  // Add withData: true to load file bytes directly
+                  withData: true,
+                );
+                
+                if (result == null) return;
 
-              for (var file in result.files) {
-                debugPrint('Selected file: ${file.name}');
-                openFile(file);
+                int successCount = 0;
+                for (var file in result.files) {
+                  try {
+                    if (file.path != null) {
+                      final savedFile = await saveFilesPermanently(file);
+                      successCount++;
+                      debugPrint('Saved file to: ${savedFile.path}');
+                    }
+                  } catch (e) {
+                    debugPrint('Failed to save file: $e');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Failed to save ${file.name}: $e')),
+                    );
+                  }
+                }
+
+                if (successCount > 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('$successCount files saved successfully')),
+                  );
+                }
+              } catch (e) {
+                debugPrint('Error handling files: $e');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error handling files: $e')),
+                );
               }
             } else if (action == 'folder') {
               final directoryPath =
@@ -555,56 +598,64 @@ Future<void> _resetToDefault() async {
   void _showStorageSettingsDialog() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        title: Text('Storage Settings'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Current location for received files:'),
-            SizedBox(height: 8),
-            Container(
-              padding: EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.background,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              width: double.infinity,
-              child: Text(
-                _currentStoragePath ?? 'Not set',
-                style: TextStyle(fontFamily: 'monospace'),
-                overflow: TextOverflow.ellipsis,
-              ),
+      builder:
+          (context) => AlertDialog(
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            title: Text('Storage Settings'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Current location for received files:'),
+                SizedBox(height: 8),
+                Container(
+                  padding: EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.background,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  width: double.infinity,
+                  child: Text(
+                    _currentStoragePath ?? 'Not set',
+                    style: TextStyle(fontFamily: 'monospace'),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            child: Text('Reset to Default'),
-            onPressed: () {
-              _resetToDefault();
-              Navigator.pop(context);
-            },
+            actions: [
+              TextButton(
+                child: Text('Reset to Default'),
+                onPressed: () {
+                  _resetToDefault();
+                  Navigator.pop(context);
+                },
+              ),
+              ElevatedButton(
+                child: Text('Change Location'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Color(0xFF50C2C9),
+                ),
+                onPressed: () {
+                  Navigator.pop(context);
+                  _selectStorageLocation();
+                },
+              ),
+            ],
           ),
-          ElevatedButton(
-            child: Text('Change Location'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Color(0xFF50C2C9),
-            ),
-            onPressed: () {
-              Navigator.pop(context);
-              _selectStorageLocation();
-            },
-          ),
-        ],
-      ),
     );
   }
 
-  Future<Future<File>> saveFilesPermanently(PlatformFile file) async {
+  Future<File> saveFilesPermanently(PlatformFile file) async {
     final appStorage = await getApplicationDocumentsDirectory();
-    final newFile = File('${appStorage.path}/${file.name}');
+    final receivedFilesDir = Directory('${appStorage.path}/ReceivedFiles');
+    
+    // Create directory if it doesn't exist
+    if (!(await receivedFilesDir.exists())) {
+      await receivedFilesDir.create(recursive: true);
+    }
+    
+    final newFile = File('${receivedFilesDir.path}/${file.name}');
     return File(file.path!).copy(newFile.path);
   }
 
@@ -619,10 +670,7 @@ Future<void> _resetToDefault() async {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.primary,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Color(0xFF50C2C9).withOpacity(0.5),
-          width: 1,
-        ),
+        border: Border.all(color: Color(0xFF50C2C9).withOpacity(0.5), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -660,37 +708,30 @@ Future<void> _resetToDefault() async {
             ],
           ),
           SizedBox(height: screenHeight * 0.01),
-          _isLoadingStoragePath 
+          _isLoadingStoragePath
               ? Center(child: CircularProgressIndicator())
               : Container(
-                  padding: EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.background,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.folder_open,
-                        color: Colors.amber,
-                        size: 18,
-                      ),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _currentStoragePath ?? 'Not set',
-                          style: TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 12,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
+                padding: EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.background,
+                  borderRadius: BorderRadius.circular(8),
                 ),
+                child: Row(
+                  children: [
+                    Icon(Icons.folder_open, color: Colors.amber, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _currentStoragePath ?? 'Not set',
+                        style: TextStyle(fontFamily: 'monospace', fontSize: 12),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           SizedBox(height: screenHeight * 0.01),
-          
+
           Text(
             'Files received from other devices and downloads will be saved here.',
             style: TextStyle(
