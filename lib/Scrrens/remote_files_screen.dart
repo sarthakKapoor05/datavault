@@ -4,8 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:intl/intl.dart';
 import 'dart:async';
-import 'dart:convert';  // Added for jsonDecode
-import 'dart:io';  // Added for Directory and File
+import 'dart:convert';  // For jsonDecode function
+import 'dart:io';       // For File and Directory classes
 import 'package:open_file/open_file.dart';
 import 'package:datavault/utils/storage_manager.dart';
 
@@ -33,6 +33,7 @@ class _RemoteFilesScreenState extends State<RemoteFilesScreen> {
   bool _isLoading = false;
   List<String> _pathHistory = [];
   Map<String, bool> _downloadingFiles = {};
+  StreamSubscription? _streamSubscription;
 
   @override
   void initState() {
@@ -50,7 +51,7 @@ class _RemoteFilesScreenState extends State<RemoteFilesScreen> {
   void _setupFileListListener() {
     final connectionService = Provider.of<ConnectionService>(context, listen: false);
     
-    connectionService.broadcastStream?.listen((message) {
+    _streamSubscription = connectionService.broadcastStream?.listen((message) {
       if (message is String) {
         try {
           final data = jsonDecode(message);
@@ -266,6 +267,12 @@ class _RemoteFilesScreenState extends State<RemoteFilesScreen> {
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _streamSubscription?.cancel();
+    super.dispose();
   }
 
   IconData _getFileIcon(String path) {
