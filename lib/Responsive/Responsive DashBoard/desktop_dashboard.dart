@@ -1,7 +1,9 @@
-import 'dart:convert'; // Add this import for jsonEncode
+import 'dart:async';
+import 'dart:convert'; // For jsonEncode
 import 'dart:io';
 import 'package:datavault/Scrrens/downloads_screen.dart';
 import 'package:datavault/Scrrens/settings_screen.dart';
+import 'package:datavault/Scrrens/remote_files_screen.dart'; // Add this line
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:datavault/Scrrens/folders.dart';
@@ -970,6 +972,46 @@ class _FileManagerPageState extends State<FileManagerPage> {
   void _showRemoteFileBrowser(BuildContext context, String deviceId, String deviceName) {
     final connectionService = Provider.of<ConnectionService>(context, listen: false);
     
+    // Declare the subscription variable first
+    StreamSubscription? subscription;
+    
+    // Then assign it separately
+    subscription = connectionService.broadcastStream?.listen((message) {
+      if (message is String) {
+        try {
+          final data = jsonDecode(message);
+          
+          if (data['type'] == 'file_list_response' && 
+              data['requesterId'] == connectionService.deviceId &&
+              data['sourceId'] == deviceId) {
+            
+            // Close loading dialog
+            Navigator.of(context, rootNavigator: true).pop();
+            
+            // Navigate to RemoteFilesScreen
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => RemoteFilesScreen(
+                  deviceId: deviceId,
+                  deviceName: deviceName,
+                  initialFiles: List<Map<String, dynamic>>.from(
+                    data['files'].map((file) => Map<String, dynamic>.from(file))
+                  ),
+                  initialPath: data['sourcePath'] ?? '',
+                ),
+              ),
+            );
+            
+            // Now you can cancel the subscription after first response
+            subscription?.cancel();
+          }
+        } catch (e) {
+          print('Error processing message: $e');
+        }
+      }
+    });
+    
     // Show loading dialog
     showDialog(
       context: context,
@@ -986,16 +1028,20 @@ class _FileManagerPageState extends State<FileManagerPage> {
       ),
     );
     
-    // Request file list
-    connectionService.requestRemoteFileList(deviceId).then((_) {
-      // Dialog will be closed by the stream listener when data arrives
-    }).catchError((error) {
-      // Close dialog and show error
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error requesting files: $error'))
-      );
+    // Set timeout for dialog
+    Future.delayed(Duration(seconds: 10), () {
+      // Check if dialog is still showing
+      if (ModalRoute.of(context)?.isCurrent != true) {
+        Navigator.of(context, rootNavigator: true).pop();
+        subscription?.cancel();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Request timed out. Please try again.'))
+        );
+      }
     });
+    
+    // Request file list
+    connectionService.requestRemoteFileList(deviceId);
   }
 }
 
