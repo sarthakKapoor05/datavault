@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:datavault/services/event_bus_service.dart';
+import 'package:path/path.dart' as path;
+import 'package:datavault/utils/storage_manager.dart';
 
 class ConnectionService with ChangeNotifier {
   static final ConnectionService _instance = ConnectionService._internal();
@@ -23,11 +26,15 @@ class ConnectionService with ChangeNotifier {
   Map<String, bool> _grantedPermissions = {};
   Map<String, String> _pendingPermissionRequests = {};
 
+  // Add device files mapping
+  Map<String, Map<String, dynamic>> _deviceFiles = {}; // Store device file listings
+
   WebSocketChannel? get channel => _channel;
   Stream<dynamic>? get broadcastStream => _broadcastStream;
   bool get isConnected => _isConnected;
   String? get deviceId => _deviceId;
   List<Map<String, dynamic>> get connectedClients => _connectedClients;
+  Map<String, Map<String, dynamic>> get deviceFiles => _deviceFiles; // Expose device files
 
   Future<void> connect(String serverAddress) async {
     if (_isConnected) return;
@@ -129,6 +136,24 @@ class ConnectionService with ChangeNotifier {
                 eventBus.fire(FileAccessDeniedEvent(deviceId: targetId));
               }
               
+              notifyListeners();
+            }
+
+            // Handle initial file list request
+            if (data['type'] == 'request_initial_file_list') {
+              _sendInitialFileList();
+            }
+
+            // Handle device files update
+            if (data['type'] == 'device_files_update') {
+              final deviceId = data['deviceId'];
+              final deviceName = data['deviceName'];
+              final files = data['files'];
+              
+              // Store the files listing
+              _storeDeviceFiles(deviceId, deviceName, files);
+              
+              // Notify listeners
               notifyListeners();
             }
           }
@@ -268,6 +293,48 @@ class ConnectionService with ChangeNotifier {
     // Remove from pending requests
     _pendingPermissionRequests.remove(deviceId);
     notifyListeners();
+  }
+
+  void _storeDeviceFiles(String deviceId, String deviceName, List<dynamic> files) {
+    _deviceFiles[deviceId] = {
+      'name': deviceName,
+      'files': files,
+    };
+  }
+
+  Future<void> _sendInitialFileList() async {
+    try {
+      final storagePath = await StorageManager.getDefaultStoragePath();
+      final directory = Directory(storagePath);
+      List<Map<String, dynamic>> files = [];
+      
+      if (await directory.exists()) {
+        final entities = await directory.list().toList();
+        
+        for (var entity in entities) {
+          final stat = await entity.stat();
+          final name = path.basename(entity.path);
+          final isDir = entity is Directory;
+          
+          files.add({
+            'name': name,
+            'path': name,
+            'isDirectory': isDir,
+            'size': isDir ? 0 : stat.size,
+            'modified': stat.modified.toIso8601String(),
+          });
+        }
+      }
+      
+      if (_channel != null) {
+        _channel!.sink.add(jsonEncode({
+          "type": "initial_file_list_response",
+          "files": files,
+        }));
+      }
+    } catch (e) {
+      print('Error sending initial file list: $e');
+    }
   }
 
   @override
