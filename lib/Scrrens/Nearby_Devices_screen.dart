@@ -35,17 +35,20 @@ class _ShareScreenState extends State<ShareScreen>
 
   void startScanning() async {
     try {
-      final connectionService = Provider.of<ConnectionService>(context, listen: false);
+      final connectionService = Provider.of<ConnectionService>(
+        context,
+        listen: false,
+      );
       await connectionService.connect('192.168.18.226');
-      
+
       setState(() {
         _isConnected = connectionService.isConnected;
       });
-      
+
       // Get broadcast stream from service
       _broadcastStream = connectionService.broadcastStream;
       _channel = connectionService.channel;
-      
+
       // Listen for messages from the server using our broadcast stream
       _broadcastStream!.listen(
         (message) {
