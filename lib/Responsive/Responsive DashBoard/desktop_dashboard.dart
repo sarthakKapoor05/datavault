@@ -72,12 +72,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
   ];
 
   final List<Map<String, dynamic>> sources = [
-    {
-      'title': 'Received Files',
-      'icon': Icons.file_present,
-      'color': Colors.blue,
-    },
-    {'title': 'Downloads', 'icon': Icons.download, 'color': Colors.blue},
     {'title': 'Settings', 'icon': Icons.settings, 'color': Colors.grey},
   ];
 
@@ -968,24 +962,11 @@ class _FileManagerPageState extends State<FileManagerPage> {
       leading: Icon(source['icon'], color: source['color'], size: 32),
       title: Text(source['title'], style: const TextStyle()),
       onTap: () {
-        if (source['title'] == 'Received Files') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const ReceivedFilesScreen(),
-            ),
-          );
-        } else if (source['title'] == 'Downloads') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const DownloadsScreen()),
-          );
-        } else if (source['title'] == 'Settings') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const SettingsScreen()),
-          );
-        }
+        // Only Settings option remains
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const SettingsScreen()),
+        );
       },
       contentPadding: const EdgeInsets.symmetric(vertical: 4),
     );
