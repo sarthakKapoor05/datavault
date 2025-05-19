@@ -140,6 +140,12 @@ class _ShareScreenState extends State<ShareScreen>
                   _handleDirectoryListingRequest(path, requesterId, recursive);
                 }
               }
+
+              // Add file transfer completion handler
+              if (data['type'] == 'file_transfer_complete') {
+                // Refresh file lists when the server tells us a file transfer completed
+                _refreshAllFileLists();
+              }
             }
             // Handle binary data (file content)
             else if (message is List<int> && _expectedFile != null) {
@@ -252,7 +258,6 @@ class _ShareScreenState extends State<ShareScreen>
       final file = await StorageManager.saveToDefaultStorage(
         fileName,
         Uint8List.fromList(decryptedBytes),
-        // subfolder: safeSenderName, // Use sender name instead of ID
       );
 
       // Show success notification
@@ -271,14 +276,18 @@ class _ShareScreenState extends State<ShareScreen>
       // Clear the expected file metadata
       setState(() {
         _expectedFile = null;
-        // Reset transfer mode after a delay
-        Future.delayed(Duration(seconds: 2), () {
-          if (mounted) {
-            setState(() {
-              _transferMode = FileTransferMode.idle;
-            });
-          }
-        });
+      });
+      
+      // Request updated file list from all connected devices
+      _refreshAllFileLists();
+
+      // Reset transfer mode after a delay
+      Future.delayed(Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() {
+            _transferMode = FileTransferMode.idle;
+          });
+        }
       });
     } catch (e) {
       print('Error saving received file: $e');
@@ -360,7 +369,7 @@ class _ShareScreenState extends State<ShareScreen>
         final data = jsonDecode(message);
         if (data['type'] == 'ready_for_file') {
           // Send the actual encrypted file data
-          _channel!.sink.add(encryptedBytes); // <--- FIXED
+          _channel!.sink.add(encryptedBytes);
 
           Future.delayed(Duration(milliseconds: 500), () {
             if (!sendCompleter.isCompleted) {
@@ -381,6 +390,9 @@ class _ShareScreenState extends State<ShareScreen>
     });
 
     await sendCompleter.future;
+    
+    // After file is sent, refresh the file lists
+    _refreshAllFileLists();
   }
 
   // Start ping timer to keep connection alive and detect disconnection
@@ -845,18 +857,19 @@ class _ShareScreenState extends State<ShareScreen>
   }
 
   // Card for connected devices
+  // Update the _connectedDeviceCard method to fix overflow issues
   Widget _connectedDeviceCard(Map<String, dynamic> device) {
-    // Don't show our own device in the list - use consistent property name
+    // Don't show our own device in the list
     final isOwnDevice = _deviceId != null && 
         (device['deviceId'] == _deviceId || device['id'] == _deviceId);
     
     if (isOwnDevice) {
-      return SizedBox.shrink(); // Hide our own device completely
+      return SizedBox.shrink();
     }
 
     return Container(
-      width: 330,
-      height: 200, // Reduced height since we'll have fewer buttons
+      width: 180, // Reduced width from 330
+      height: 180, // Reduced height to fit content better
       margin: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
@@ -867,44 +880,56 @@ class _ShareScreenState extends State<ShareScreen>
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.max,
         children: [
           Icon(
             _transferMode == FileTransferMode.sending
                 ? Icons.upload
                 : Icons.devices,
-            size: 30,
+            size: 28, // Reduced from 30
             color: _transferMode == FileTransferMode.sending
                 ? Colors.amber
                 : Colors.white,
           ),
           const SizedBox(height: 8),
-          Text(
-            device['name'] ?? 'Unknown',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: Text(
+              device['name'] ?? 'Unknown',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+                fontSize: 14, // Reduced from default
+              ),
             ),
           ),
-          Text(
-            device['id'] ?? 'Unknown ID',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: Theme.of(context).colorScheme.secondary),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: Text(
+              device['id'] ?? 'Unknown ID',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.secondary,
+                fontSize: 11, // Reduced size
+              ),
+            ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
 
           // Show different buttons based on the transfer mode
           if (_transferMode == FileTransferMode.idle) ...[
-            // Only show Send button, removed Receive
+            // Only show Send button
             ElevatedButton.icon(
-              icon: Icon(Icons.upload, size: 16),
-              label: Text('Send Files', style: TextStyle(fontSize: 14)),
+              icon: Icon(Icons.upload, size: 14),
+              label: Text('Send', style: TextStyle(fontSize: 12)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.amber,
-                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                minimumSize: Size(100, 36),
               ),
               onPressed: () {
                 setState(() {
@@ -916,29 +941,38 @@ class _ShareScreenState extends State<ShareScreen>
 
           // Send mode UI
           if (_transferMode == FileTransferMode.sending) ...[
-            Text(
-              'Select files to send',
-              style: TextStyle(
-                color: Colors.amber,
-                fontWeight: FontWeight.bold,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Text(
+                'Select files',
+                style: TextStyle(
+                  color: Colors.amber,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+                textAlign: TextAlign.center,
               ),
             ),
             SizedBox(height: 8),
-            ElevatedButton.icon(
-              icon: Icon(Icons.attach_file),
-              label: Text('Select File'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
-              onPressed: () => sendFileToClient(device['id']),
+            SizedBox(
+              height: 36,
+              child: ElevatedButton(
+                child: Text('Browse', style: TextStyle(fontSize: 12)),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+                onPressed: () => sendFileToClient(device['id']),
+              ),
             ),
-            SizedBox(height: 8),
-            TextButton.icon(
-              icon: Icon(Icons.cancel),
-              label: Text('Cancel'),
-              onPressed: () {
-                setState(() {
-                  _transferMode = FileTransferMode.idle;
-                });
-              },
+            SizedBox(height: 4),
+            SizedBox(
+              height: 30,
+              child: TextButton(
+                child: Text('Cancel', style: TextStyle(fontSize: 12)),
+                onPressed: () {
+                  setState(() {
+                    _transferMode = FileTransferMode.idle;
+                  });
+                },
+              ),
             ),
           ],
         ],
@@ -1316,6 +1350,19 @@ class _ShareScreenState extends State<ShareScreen>
       print('Error listing directory $directory: $e');
     }
   }
+
+  // Add this method to the _ShareScreenState class
+  void _refreshAllFileLists() {
+  if (_channel != null && _isConnected) {
+    // Ask the server to request updated file lists from all clients
+    _channel!.sink.add(jsonEncode({
+      "type": "refresh_all_file_lists",
+    }));
+    
+    // Also send our own updated file list
+    _sendInitialFileList();
+  }
+}
 }
 
 // Use a secure key in production!
