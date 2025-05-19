@@ -2,9 +2,14 @@ import 'dart:async';
 import 'dart:convert'; // For jsonEncode
 import 'dart:io';
 import 'package:datavault/Responsive/Responsive%20DashBoard/mobile_dashboard.dart';
+import 'package:datavault/Responsive/Responsive%20DashBoard/tablet_dashboard.dart';
+import 'package:datavault/Scrrens/Folders/apks_screen.dart';
+import 'package:datavault/Scrrens/Folders/archives_screen.dart';
+import 'package:datavault/Scrrens/Folders/documents_screen.dart';
 import 'package:datavault/Scrrens/downloads_screen.dart';
 import 'package:datavault/Scrrens/settings_screen.dart';
 import 'package:datavault/Scrrens/remote_files_screen.dart'; // Add this line
+import 'package:datavault/Scrrens/storage_files_screen.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:datavault/Scrrens/folders.dart';
@@ -1836,6 +1841,17 @@ class FileAccessDeniedEvent {
 class PhotosScreen extends StatelessWidget {
   const PhotosScreen({super.key});
 
+  void openFileByPath(String path) async {
+    try {
+      final result = await OpenFile.open(path);
+      if (result.type != ResultType.done) {
+        print('Error opening file: ${result.message}');
+      }
+    } catch (e) {
+      print('Exception while opening file: $e');
+    }
+  }
+
   Future<List<FileSystemEntity>> _getPhotoFiles() async {
     final storagePath = await StorageManager.getDefaultStoragePath();
     final receivedDir = Directory('$storagePath/Received');
@@ -1905,6 +1921,17 @@ class PhotosScreen extends StatelessWidget {
 
 class VideosScreen extends StatelessWidget {
   const VideosScreen({super.key});
+
+  void openFileByPath(String path) async {
+    try {
+      final result = await OpenFile.open(path);
+      if (result.type != ResultType.done) {
+        print('Error opening file: ${result.message}');
+      }
+    } catch (e) {
+      print('Exception while opening file: $e');
+    }
+  }
 
   Future<List<FileSystemEntity>> _getVideoFiles() async {
     final storagePath = await StorageManager.getDefaultStoragePath();
@@ -1998,6 +2025,18 @@ class AudioScreen extends StatelessWidget {
     await collectFiles(receivedDir);
 
     return files;
+  }
+
+  // Add this method to fix the error
+  void openFileByPath(String path) async {
+    try {
+      final result = await OpenFile.open(path);
+      if (result.type != ResultType.done) {
+        print('Error opening file: ${result.message}');
+      }
+    } catch (e) {
+      print('Exception while opening file: $e');
+    }
   }
 
   @override
