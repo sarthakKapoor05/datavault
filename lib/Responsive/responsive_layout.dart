@@ -16,7 +16,7 @@ ResponsiveLayout({
     return LayoutBuilder(builder: (context, constraints) {
       if (constraints.maxWidth < 800) {
         return mobileScaffold;
-      } else if (constraints.maxWidth < 1100) {
+      } else if (constraints.maxWidth < 1200) {
         return tabletScaffold;
       } else {
         return desktopScaffold;

@@ -8,7 +8,7 @@ plugins {
 android {
     namespace = "com.example.datavault"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = "27.0.12077973"
+    ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -41,9 +41,4 @@ android {
 
 flutter {
     source = "../.."
-}
-
-dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
-    implementation 'com.google.android.material:material:1.5.0'  // Add this line
 }
