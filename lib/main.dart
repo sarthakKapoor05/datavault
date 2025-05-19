@@ -1,5 +1,6 @@
 import 'package:datavault/Scrrens/biometrics_and_pin_page.dart';
 import 'package:datavault/theme/theme.dart';
+import 'package:datavault/widgets/file_request_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_size/window_size.dart';
@@ -30,7 +31,15 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: savedPin == null ? SetPinPage() : PinCheckPage(),
+      home: Builder(
+        builder: (context) => Stack(
+          children: [
+      savedPin == null ? SetPinPage() : PinCheckPage(),
+            // Add this to handle file request dialogs
+            FileRequestDialog(),
+          ],
+        ),
+      ),
       theme: lightMode,
       darkTheme: darkMode,
     );

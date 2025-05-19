@@ -22,3 +22,15 @@ class FileAccessDeniedEvent {
   
   FileAccessDeniedEvent({required this.deviceId});
 }
+
+class FileRequestEvent {
+  final String requesterId;
+  final String requesterName;
+  final String filename;
+
+  FileRequestEvent({
+    required this.requesterId, 
+    required this.requesterName,
+    required this.filename,
+  });
+}

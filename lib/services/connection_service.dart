@@ -43,6 +43,12 @@ class ConnectionService with ChangeNotifier {
   // Public getter for active transfers
   Map<String, Map<String, dynamic>> get activeTransfers => _activeTransfers;
 
+  // Track file requests separately from permission requests
+  Map<String, List<String>> _pendingFileRequests = {};
+
+  // Public getter for pending file requests
+  Map<String, List<String>> get pendingFileRequests => _pendingFileRequests;
+
   WebSocketChannel? get channel => _channel;
   Stream<dynamic>? get broadcastStream => _broadcastStream;
   bool get isConnected => _isConnected;
@@ -113,6 +119,7 @@ class ConnectionService with ChangeNotifier {
             }
             
             else if (data['type'] == 'connected_devices') {
+              print('get connected devices');
               final devices = data['devices'];
               if (devices is List) {
                 _connectedClients = List<Map<String, dynamic>>.from(
@@ -122,19 +129,36 @@ class ConnectionService with ChangeNotifier {
               }
             }
 
-            else if (data['type'] == 'file_access_request') {
-              final requesterId = data['requesterId'];
-              final requesterName = data['requesterName'];
+            else if (data['type'] == 'request_file') {
+              // Extract data
+              final requesterId = data['fromId'] ?? data['requesterId'];
+              final filename = data['filename'];
               
-              _pendingPermissionRequests[requesterId] = requesterName;
+              // Find requester name
+              String requesterName = 'Unknown Device';
+              for (var client in _connectedClients) {
+                if (client['id'] == requesterId) {
+                  requesterName = client['name'] ?? 'Unknown Device';
+                  break;
+                }
+              }
               
-              // Notify listeners so UI can show permission dialog
+              print('📩 File request received from $requesterName for file: $filename');
+              
+              // Store the request for UI to handle
+              if (!_pendingFileRequests.containsKey(requesterId)) {
+                _pendingFileRequests[requesterId] = [];
+              }
+              _pendingFileRequests[requesterId]!.add(filename);
+              
+              // Notify listeners so UI can show file request dialog
               notifyListeners();
               
-              // Also broadcast an event for this
-              eventBus.fire(FileAccessRequestEvent(
+              // Fire a specific event for file requests
+              eventBus.fire(FileRequestEvent(
                 requesterId: requesterId,
-                requesterName: requesterName
+                requesterName: requesterName,
+                filename: filename,
               ));
             }
 
@@ -699,6 +723,79 @@ class ConnectionService with ChangeNotifier {
   void _updateTransferProgress(String filePath, double progress) {
     if (_activeTransfers.containsKey(filePath)) {
       _activeTransfers[filePath]!['progress'] = progress;
+      notifyListeners();
+    }
+  }
+
+  // Add these methods to ConnectionService
+
+  // Send a file to a device that requested it
+  Future<void> sendRequestedFile(String deviceId, String filePath) async {
+    if (!isConnected || _channel == null) return;
+    
+    try {
+      // First, check if file exists
+      final file = File(filePath);
+      if (!await file.exists()) {
+        print('❌ File not found: $filePath');
+        return;
+      }
+      
+      // Read the file
+      final bytes = await file.readAsBytes();
+      final fileSize = bytes.length;
+      
+      // First send metadata
+      print('📤 Sending file metadata: $filePath (${fileSize} bytes)');
+      _channel!.sink.add(jsonEncode({
+        "type": "file_metadata",
+        "targetId": deviceId,
+        "filename": filePath,
+        "size": fileSize,
+        "fromId": _deviceId,
+      }));
+      
+      // Wait a moment for metadata to be processed
+      await Future.delayed(Duration(milliseconds: 500));
+      
+      // Then send the actual file content
+      print('📤 Sending file content: $filePath');
+      _channel!.sink.add(bytes);
+      
+      // Remove from pending requests
+      if (_pendingFileRequests.containsKey(deviceId)) {
+        _pendingFileRequests[deviceId]!.remove(filePath);
+        if (_pendingFileRequests[deviceId]!.isEmpty) {
+          _pendingFileRequests.remove(deviceId);
+        }
+      }
+      
+      print('✅ File sent: $filePath');
+      
+      notifyListeners();
+    } catch (e) {
+      print('❌ Error sending file: $e');
+    }
+  }
+
+  // Deny file request
+  void denyFileRequest(String deviceId, String filePath) {
+    if (_pendingFileRequests.containsKey(deviceId)) {
+      _pendingFileRequests[deviceId]!.remove(filePath);
+      if (_pendingFileRequests[deviceId]!.isEmpty) {
+        _pendingFileRequests.remove(deviceId);
+      }
+      
+      // Notify the requester that the file was denied
+      if (isConnected && _channel != null) {
+        _channel!.sink.add(jsonEncode({
+          "type": "file_request_denied",
+          "targetId": deviceId,
+          "filename": filePath,
+          "fromId": _deviceId,
+        }));
+      }
+      
       notifyListeners();
     }
   }
