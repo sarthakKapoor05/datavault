@@ -42,7 +42,7 @@ class _ShareScreenState extends State<ShareScreen>
         context,
         listen: false,
       );
-      await connectionService.connect('192.168.18.226');
+      await connectionService.connect('192.168.0.196');
 
       setState(() {
         _isConnected = connectionService.isConnected;
@@ -249,6 +249,7 @@ class _ShareScreenState extends State<ShareScreen>
 
       // Use the default storage location from StorageManager with sender name instead of ID
       final decryptedBytes = decryptFileBytes(fileData);
+      print('file data: $fileName');
       final file = await StorageManager.saveToDefaultStorage(
         fileName,
         Uint8List.fromList(decryptedBytes),

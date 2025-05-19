@@ -28,13 +28,16 @@ class ConnectionService with ChangeNotifier {
   Map<String, String> _pendingPermissionRequests = {};
 
   // Add device files mapping
-  Map<String, Map<String, dynamic>> _deviceFiles = {}; // Store device file listings
-  Map<String, Map<String, dynamic>> get deviceFiles => _deviceFiles; // Expose device files
+  Map<String, Map<String, dynamic>> _deviceFiles =
+      {}; // Store device file listings
+  Map<String, Map<String, dynamic>> get deviceFiles =>
+      _deviceFiles; // Expose device files
 
   // Add this method to track directory structure
 
   // Store cached directory listings for quicker navigation
-  final Map<String, Map<String, List<Map<String, dynamic>>>> _cachedDirectories = {};
+  final Map<String, Map<String, List<Map<String, dynamic>>>>
+  _cachedDirectories = {};
 
   // Add these properties to your ConnectionService class
 
@@ -58,37 +61,39 @@ class ConnectionService with ChangeNotifier {
 
   Future<void> connect(String serverAddress) async {
     if (_isConnected) return;
-    
+
     try {
       // Close existing connection if any
       await _channel?.sink.close();
-      
+
       // Connect to WebSocket server
       final wsUrl = Uri.parse('ws://$serverAddress:8080');
       _channel = WebSocketChannel.connect(wsUrl);
-      
+
       // Create a broadcast stream
       _broadcastStream = _channel!.stream.asBroadcastStream();
-      
+
       // Load device ID and name
       await _loadDeviceInfo();
-      
+
       // Register this device
-      _channel!.sink.add(jsonEncode({
-        "type": "register_device",
-        "deviceName": deviceName ?? "DataVault User",
-        "deviceId": _deviceId,
-      }));
-      
+      _channel!.sink.add(
+        jsonEncode({
+          "type": "register_device",
+          "deviceName": deviceName ?? "DataVault User",
+          "deviceId": _deviceId,
+        }),
+      );
+
       // Request connected devices list
       _channel!.sink.add(jsonEncode({"type": "get_connected_devices"}));
-      
+
       // Setup listeners
       _setupListeners();
-      
+
       // Start ping timer
       _startPingTimer();
-      
+
       _isConnected = true;
       notifyListeners();
     } catch (e) {
@@ -114,12 +119,10 @@ class ConnectionService with ChangeNotifier {
         try {
           if (message is String) {
             final data = jsonDecode(message);
-            
+
             if (data['type'] == 'device_registered') {
               _saveDeviceId(data['deviceId']);
-            }
-            
-            else if (data['type'] == 'connected_devices') {
+            } else if (data['type'] == 'connected_devices') {
               print('get connected devices');
               final devices = data['devices'];
               if (devices is List) {
@@ -128,13 +131,11 @@ class ConnectionService with ChangeNotifier {
                 );
                 notifyListeners();
               }
-            }
-
-            else if (data['type'] == 'request_file') {
+            } else if (data['type'] == 'request_file') {
               // Extract data
               final requesterId = data['fromId'] ?? data['requesterId'];
               final filename = data['filename'];
-              
+
               // Find requester name
               String requesterName = 'Unknown Device';
               for (var client in _connectedClients) {
@@ -143,17 +144,17 @@ class ConnectionService with ChangeNotifier {
                   break;
                 }
               }
-              
-              print('📩 File request received from $requesterName for file: $filename');
-              
+
+              print(
+                '📩 File request received from $requesterName for file: $filename',
+              );
+
               // Instead of firing an event, automatically send the file
               _autoSendRequestedFile(requesterId, filename);
-            }
-
-            else if (data['type'] == 'file_access_response') {
+            } else if (data['type'] == 'file_access_response') {
               final granted = data['granted'] == true;
               final targetId = data['targetId'];
-              
+
               if (granted) {
                 _grantedPermissions[targetId] = true;
                 // Now we can proceed with file listing
@@ -162,53 +163,55 @@ class ConnectionService with ChangeNotifier {
                 _grantedPermissions[targetId] = false;
                 eventBus.fire(FileAccessDeniedEvent(deviceId: targetId));
               }
-              
+
               notifyListeners();
             }
-            
             // Add handlers for file requests
             else if (data['type'] == 'request_initial_file_list') {
               _sendInitialFileList();
-            }
-            
-            else if (data['type'] == 'device_files_update') {
+            } else if (data['type'] == 'device_files_update') {
               final deviceId = data['deviceId'];
               final deviceName = data['deviceName'];
               final files = data['files'];
-              
+
               // Store the files listing
               _storeDeviceFiles(deviceId, deviceName, files);
-              
+
               // Notify listeners
               notifyListeners();
             }
-            
             // Critical: Add file metadata handler
             else if (data['type'] == 'file_metadata') {
-              print('Received file metadata: ${data['filename']}, size: ${data['size']} bytes from ${data['fromId']}');
-              
+              print(
+                'Received file metadata: ${data['filename']}, size: ${data['size']} bytes from ${data['fromId']}',
+              );
+
               // Store or update expected file details
               if (_expectedFile != null) {
                 // Check if this is the file we're expecting
-                if (_expectedFile!['fromId'] == data['fromId'] || 
-                    path.basename(_expectedFile!['filename'] as String) == path.basename(data['filename'])) {
-                  
+                if (_expectedFile!['fromId'] == data['fromId'] ||
+                    path.basename(_expectedFile!['filename'] as String) ==
+                        path.basename(data['filename'])) {
                   _expectedFile!['size'] = data['size'];
-                  _expectedFile!['fromId'] = data['fromId']; // Ensure fromId is set correctly
-                  
+                  _expectedFile!['fromId'] =
+                      data['fromId']; // Ensure fromId is set correctly
+
                   // Store the actual filename from the metadata in case the paths differ
                   _expectedFile!['metadata_filename'] = data['filename'];
-                  
-                  print('Updated expected file metadata - ready to receive file contents');
+
+                  print(
+                    'Updated expected file metadata - ready to receive file contents',
+                  );
                 } else {
-                  print('Received metadata for unexpected file: ${data['filename']}');
+                  print(
+                    'Received metadata for unexpected file: ${data['filename']}',
+                  );
                 }
               } else {
                 print('Received file metadata but no file was requested');
               }
             }
-          } 
-          else if (message is List<int>) {
+          } else if (message is List<int>) {
             // Handle binary data (file content)
             _handleIncomingFile(message);
           }
@@ -261,15 +264,17 @@ class ConnectionService with ChangeNotifier {
     deviceName = name;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('device_name', name);
-    
+
     if (_isConnected && _channel != null) {
-      _channel!.sink.add(jsonEncode({
-        "type": "update_device_name",
-        "deviceId": _deviceId,
-        "deviceName": name,
-      }));
+      _channel!.sink.add(
+        jsonEncode({
+          "type": "update_device_name",
+          "deviceId": _deviceId,
+          "deviceName": name,
+        }),
+      );
     }
-    
+
     notifyListeners();
   }
 
@@ -277,29 +282,33 @@ class ConnectionService with ChangeNotifier {
     if (!_isConnected || _channel == null) {
       throw Exception('Not connected to server');
     }
-    
-    _channel!.sink.add(jsonEncode({
-      "type": "list_files",
-      "targetId": deviceId,
-      "path": path ?? '',
-      "requesterId": _deviceId,
-    }));
+
+    _channel!.sink.add(
+      jsonEncode({
+        "type": "list_files",
+        "targetId": deviceId,
+        "path": path ?? '',
+        "requesterId": _deviceId,
+      }),
+    );
   }
 
   Future<void> requestRemoteFile(String deviceId, String filePath) async {
     if (!_isConnected || _channel == null) {
       throw Exception('Not connected to server');
     }
-    
+
     final fileName = filePath.split('/').last;
-    
-    _channel!.sink.add(jsonEncode({
-      "type": "request_file",
-      "targetId": deviceId,
-      "path": filePath,
-      "filename": fileName,
-      "requesterId": _deviceId,
-    }));
+
+    _channel!.sink.add(
+      jsonEncode({
+        "type": "request_file",
+        "targetId": deviceId,
+        "path": filePath,
+        "filename": fileName,
+        "requesterId": _deviceId,
+      }),
+    );
   }
 
   // Check if a device has permission
@@ -312,13 +321,15 @@ class ConnectionService with ChangeNotifier {
     if (!_isConnected || _channel == null) {
       throw Exception('Not connected to server');
     }
-    
-    _channel!.sink.add(jsonEncode({
-      "type": "request_file_access",
-      "targetId": deviceId,
-      "requesterId": _deviceId,
-    }));
-    
+
+    _channel!.sink.add(
+      jsonEncode({
+        "type": "request_file_access",
+        "targetId": deviceId,
+        "requesterId": _deviceId,
+      }),
+    );
+
     // Track this pending request
     _pendingPermissionRequests[deviceId] = 'pending';
     notifyListeners();
@@ -327,34 +338,39 @@ class ConnectionService with ChangeNotifier {
   // Grant permission to a device
   void grantPermissionTo(String deviceId) {
     if (!_isConnected || _channel == null) return;
-    
-    _channel!.sink.add(jsonEncode({
-      "type": "file_access_response",
-      "requesterId": deviceId,
-      "granted": true
-    }));
+
+    _channel!.sink.add(
+      jsonEncode({
+        "type": "file_access_response",
+        "requesterId": deviceId,
+        "granted": true,
+      }),
+    );
   }
 
   // Deny permission to a device
   void denyPermissionTo(String deviceId) {
     if (!_isConnected || _channel == null) return;
-    
-    _channel!.sink.add(jsonEncode({
-      "type": "file_access_response",
-      "requesterId": deviceId,
-      "granted": false
-    }));
-    
+
+    _channel!.sink.add(
+      jsonEncode({
+        "type": "file_access_response",
+        "requesterId": deviceId,
+        "granted": false,
+      }),
+    );
+
     // Remove from pending requests
     _pendingPermissionRequests.remove(deviceId);
     notifyListeners();
   }
 
-  void _storeDeviceFiles(String deviceId, String deviceName, List<dynamic> files) {
-    _deviceFiles[deviceId] = {
-      'name': deviceName,
-      'files': files,
-    };
+  void _storeDeviceFiles(
+    String deviceId,
+    String deviceName,
+    List<dynamic> files,
+  ) {
+    _deviceFiles[deviceId] = {'name': deviceName, 'files': files};
   }
 
   // Replace the _sendInitialFileList method with this enhanced version
@@ -368,13 +384,12 @@ class ConnectionService with ChangeNotifier {
       if (await directory.exists()) {
         await _collectFilesRecursively(directory, files, storagePath);
       }
-      
+
       if (_channel != null) {
         print('Sending initial file list with ${files.length} items');
-        _channel!.sink.add(jsonEncode({
-          "type": "initial_file_list_response",
-          "files": files,
-        }));
+        _channel!.sink.add(
+          jsonEncode({"type": "initial_file_list_response", "files": files}),
+        );
       }
     } catch (e) {
       print('Error sending initial file list: $e');
@@ -383,23 +398,23 @@ class ConnectionService with ChangeNotifier {
 
   // Add this helper method to scan folders recursively
   Future<void> _collectFilesRecursively(
-    Directory directory, 
+    Directory directory,
     List<Map<String, dynamic>> files,
-    String basePath,
-    [String relativePath = '']
-  ) async {
+    String basePath, [
+    String relativePath = '',
+  ]) async {
     if (!await directory.exists()) return;
-    
+
     try {
       final entities = await directory.list().toList();
-      
+
       for (var entity in entities) {
         try {
           final stat = await entity.stat();
           final name = path.basename(entity.path);
           final isDir = entity is Directory;
           print(name);
-          
+
           // Calculate path relative to storage root
           final filePath = relativePath.isEmpty ? name : '$relativePath/$name';
           files.add({
@@ -409,7 +424,7 @@ class ConnectionService with ChangeNotifier {
             'size': isDir ? 0 : stat.size,
             'modified': stat.modified.toIso8601String(),
           });
-          
+
           // Recursively process subdirectories
           if (isDir) {
             await _collectFilesRecursively(
@@ -430,10 +445,11 @@ class ConnectionService with ChangeNotifier {
 
   // Request a file from a remote device
   Future<void> requestFile(
-    String deviceId, 
-    String filePath, 
-    {Function(File)? onSuccess, Function(String)? onError}
-  ) async {
+    String deviceId,
+    String filePath, {
+    Function(File)? onSuccess,
+    Function(String)? onError,
+  }) async {
     if (!isConnected || _channel == null) {
       if (onError != null) {
         onError('Not connected to server');
@@ -443,7 +459,7 @@ class ConnectionService with ChangeNotifier {
 
     try {
       print('Requesting file from $deviceId: $filePath');
-      
+
       // First check if we already have a pending file request
       if (_expectedFile != null) {
         if (onError != null) {
@@ -451,7 +467,7 @@ class ConnectionService with ChangeNotifier {
         }
         return;
       }
-      
+
       // Store expected file details for tracking
       _expectedFile = {
         'filename': filePath,
@@ -460,7 +476,7 @@ class ConnectionService with ChangeNotifier {
         'onError': onError,
         'requestTime': DateTime.now().millisecondsSinceEpoch,
       };
-      
+
       // Add to active transfers
       _activeTransfers[filePath] = {
         'deviceId': deviceId,
@@ -469,23 +485,25 @@ class ConnectionService with ChangeNotifier {
         'status': 'requesting',
         'startTime': DateTime.now(),
       };
-      
+
       // Send the request - make sure we're sending what the server expects
-      _channel!.sink.add(jsonEncode({
-        "type": "request_file",
-        "targetId": deviceId,
-        "filename": filePath,  // Send the full path as filename
-        "requesterId": _deviceId,
-      }));
-      
+      _channel!.sink.add(
+        jsonEncode({
+          "type": "request_file",
+          "targetId": deviceId,
+          "filename": filePath, // Send the full path as filename
+          "requesterId": _deviceId,
+        }),
+      );
+
       print('File request sent for: $filePath from device $deviceId');
-      
+
       // Set a timeout
       Future.delayed(Duration(seconds: 60), () {
         final now = DateTime.now().millisecondsSinceEpoch;
         final requestTime = _expectedFile?['requestTime'] as int?;
-        
-        if (_expectedFile != null && 
+
+        if (_expectedFile != null &&
             _expectedFile!['filename'] == filePath &&
             now - (requestTime ?? 0) >= 59000) {
           print('File request timed out: $filePath');
@@ -512,17 +530,19 @@ class ConnectionService with ChangeNotifier {
       print('⚠️ Received unexpected file data (${fileData.length} bytes)');
       return;
     }
-    
+
     try {
       print('📥 Received binary data: ${fileData.length} bytes');
-      
+
       final senderId = _expectedFile!['fromId'] as String;
       final filePath = _expectedFile!['filename'] as String;
       final fileName = path.basename(filePath);
       final onSuccess = _expectedFile!['onSuccess'] as Function(File)?;
       final onError = _expectedFile!['onError'] as Function(String)?;
-      final isEncrypted = _expectedFile!['encrypted'] as bool? ?? true; // Default to true for safety
-      
+      final isEncrypted =
+          _expectedFile!['encrypted'] as bool? ??
+          true; // Default to true for safety
+
       // Find client name for logging only
       String senderName = 'Unknown Device';
       for (var client in _connectedClients) {
@@ -531,40 +551,42 @@ class ConnectionService with ChangeNotifier {
           break;
         }
       }
-      
-      print('💾 Saving file $fileName from $senderName (path: $filePath) to root folder');
-      
+
+      print(
+        '💾 Saving file $fileName from $senderName (path: $filePath) to root folder',
+      );
+
       // Decrypt data if it's encrypted
       final bytesToSave = isEncrypted ? decryptFileBytes(fileData) : fileData;
-      
+      print('target filename: $fileName');
       // Save file directly to the root storage folder (no subfolder)
       final file = await StorageManager.saveToDefaultStorage(
         fileName,
         Uint8List.fromList(bytesToSave),
         // Remove the subfolder parameter to save in root folder
       );
-      
+
       print('✅ File saved: ${file.path} (${fileData.length} bytes)');
-      
+
       // Update transfer status to 'completed'
       if (_activeTransfers.containsKey(filePath)) {
         _activeTransfers[filePath]!['progress'] = 1.0;
         _activeTransfers[filePath]!['status'] = 'completed';
-        
+
         // Remove from active transfers after a short delay
         Future.delayed(Duration(seconds: 3), () {
           _activeTransfers.remove(filePath);
           notifyListeners();
         });
-        
+
         notifyListeners();
       }
-      
+
       // Call success callback if provided
       if (onSuccess != null) {
         onSuccess(file);
       }
-      
+
       // Reset
       _expectedFile = null;
     } catch (e) {
@@ -596,11 +618,12 @@ class ConnectionService with ChangeNotifier {
   // Add this method to your ConnectionService class
 
   Future<List<Map<String, dynamic>>> requestDirectoryListing(
-    String deviceId, 
-    String path, 
-    {bool recursive = false, 
-     Function(List<Map<String, dynamic>>)? onSuccess, Function(String)? onError}
-  ) async {
+    String deviceId,
+    String path, {
+    bool recursive = false,
+    Function(List<Map<String, dynamic>>)? onSuccess,
+    Function(String)? onError,
+  }) async {
     if (!isConnected || _channel == null) {
       if (onError != null) {
         onError('Not connected to server');
@@ -609,7 +632,7 @@ class ConnectionService with ChangeNotifier {
     }
 
     // Check the cache first
-    if (_cachedDirectories.containsKey(deviceId) && 
+    if (_cachedDirectories.containsKey(deviceId) &&
         _cachedDirectories[deviceId]!.containsKey(path)) {
       final cachedFiles = _cachedDirectories[deviceId]![path]!;
       if (onSuccess != null) {
@@ -620,37 +643,37 @@ class ConnectionService with ChangeNotifier {
 
     try {
       print('Requesting directory listing from $deviceId for path: $path');
-      
+
       final completer = Completer<List<Map<String, dynamic>>>();
       StreamSubscription? subscription;
-      
+
       subscription = _broadcastStream?.listen((message) {
         if (message is String) {
           try {
             final data = jsonDecode(message);
-            if (data['type'] == 'file_list_response' && 
+            if (data['type'] == 'file_list_response' &&
                 data['sourceId'] == deviceId &&
                 data['requesterId'] == _deviceId &&
                 data['path'] == path) {
-              
               // Cancel subscription
               subscription?.cancel();
-              
+
               // Parse the files
               final files = List<Map<String, dynamic>>.from(
-                data['files']?.map((file) => Map<String, dynamic>.from(file)) ?? []
+                data['files']?.map((file) => Map<String, dynamic>.from(file)) ??
+                    [],
               );
-              
+
               // Cache the result
               if (!_cachedDirectories.containsKey(deviceId)) {
                 _cachedDirectories[deviceId] = {};
               }
               _cachedDirectories[deviceId]![path] = files;
-              
+
               if (onSuccess != null) {
                 onSuccess(files);
               }
-              
+
               completer.complete(files);
             }
           } catch (e) {
@@ -661,16 +684,18 @@ class ConnectionService with ChangeNotifier {
           }
         }
       });
-      
+
       // Send the request
-      _channel!.sink.add(jsonEncode({
-        "type": "request_directory_listing",
-        "targetId": deviceId,
-        "path": path,
-        "requesterId": _deviceId,
-        "recursive": recursive,
-      }));
-      
+      _channel!.sink.add(
+        jsonEncode({
+          "type": "request_directory_listing",
+          "targetId": deviceId,
+          "path": path,
+          "requesterId": _deviceId,
+          "recursive": recursive,
+        }),
+      );
+
       // Set a timeout
       Timer(Duration(seconds: 10), () {
         if (!completer.isCompleted) {
@@ -681,7 +706,7 @@ class ConnectionService with ChangeNotifier {
           completer.completeError('Request timed out');
         }
       });
-      
+
       return completer.future;
     } catch (e) {
       print('Error requesting directory listing: $e');
@@ -709,13 +734,15 @@ class ConnectionService with ChangeNotifier {
       print('DEBUG: No expected file');
       return;
     }
-    
+
     print('DEBUG: Expected File Details:');
     print('  - Filename: ${_expectedFile!['filename']}');
     print('  - From Device: ${_expectedFile!['fromId']}');
     print('  - Size: ${_expectedFile!['size'] ?? 'Unknown'}');
-    print('  - Request Time: ${DateTime.fromMillisecondsSinceEpoch(_expectedFile!['requestTime'] as int)}');
-    
+    print(
+      '  - Request Time: ${DateTime.fromMillisecondsSinceEpoch(_expectedFile!['requestTime'] as int)}',
+    );
+
     // Check if any devices match the expected sender
     for (var client in _connectedClients) {
       if (client['id'] == _expectedFile!['fromId']) {
@@ -738,7 +765,7 @@ class ConnectionService with ChangeNotifier {
   // Send a file to a device that requested it
   Future<void> sendRequestedFile(String deviceId, String filePath) async {
     if (!isConnected || _channel == null) return;
-    
+
     try {
       // First, check if file exists
       final file = File(filePath);
@@ -746,28 +773,30 @@ class ConnectionService with ChangeNotifier {
         print('❌ File not found: $filePath');
         return;
       }
-      
+
       // Read the file
       final bytes = await file.readAsBytes();
       final fileSize = bytes.length;
-      
+
       // First send metadata
       print('📤 Sending file metadata: $filePath (${fileSize} bytes)');
-      _channel!.sink.add(jsonEncode({
-        "type": "file_metadata",
-        "targetId": deviceId,
-        "filename": filePath,
-        "size": fileSize,
-        "fromId": _deviceId,
-      }));
-      
+      _channel!.sink.add(
+        jsonEncode({
+          "type": "file_metadata",
+          "targetId": deviceId,
+          "filename": filePath,
+          "size": fileSize,
+          "fromId": _deviceId,
+        }),
+      );
+
       // Wait a moment for metadata to be processed
       await Future.delayed(Duration(milliseconds: 500));
-      
+
       // Then send the actual file content
       print('📤 Sending file content: $filePath');
       _channel!.sink.add(bytes);
-      
+
       // Remove from pending requests
       if (_pendingFileRequests.containsKey(deviceId)) {
         _pendingFileRequests[deviceId]!.remove(filePath);
@@ -775,9 +804,9 @@ class ConnectionService with ChangeNotifier {
           _pendingFileRequests.remove(deviceId);
         }
       }
-      
+
       print('✅ File sent: $filePath');
-      
+
       notifyListeners();
     } catch (e) {
       print('❌ Error sending file: $e');
@@ -791,74 +820,83 @@ class ConnectionService with ChangeNotifier {
       if (_pendingFileRequests[deviceId]!.isEmpty) {
         _pendingFileRequests.remove(deviceId);
       }
-      
+
       // Notify the requester that the file was denied
       if (isConnected && _channel != null) {
-        _channel!.sink.add(jsonEncode({
-          "type": "file_request_denied",
-          "targetId": deviceId,
-          "filename": filePath,
-          "fromId": _deviceId,
-        }));
+        _channel!.sink.add(
+          jsonEncode({
+            "type": "file_request_denied",
+            "targetId": deviceId,
+            "filename": filePath,
+            "fromId": _deviceId,
+          }),
+        );
       }
-      
+
       notifyListeners();
     }
   }
 
   // Add this method to automatically process file requests
-  Future<void> _autoSendRequestedFile(String requesterId, String filePath) async {
+  Future<void> _autoSendRequestedFile(
+    String requesterId,
+    String filePath,
+  ) async {
     if (!isConnected || _channel == null) return;
-    
+
     try {
       final storagePath = await StorageManager.getDefaultStoragePath();
       final fullPath = path.join(storagePath, filePath);
       final file = File(fullPath);
-      
+
       if (!await file.exists()) {
         print('❌ File not found: $fullPath');
-        
+
         // Notify requester that file wasn't found
-        _channel!.sink.add(jsonEncode({
-          "type": "file_request_error",
-          "targetId": requesterId,
-          "filename": filePath,
-          "error": "File not found",
-          "fromId": _deviceId,
-        }));
-        
+        _channel!.sink.add(
+          jsonEncode({
+            "type": "file_request_error",
+            "targetId": requesterId,
+            "filename": filePath,
+            "error": "File not found",
+            "fromId": _deviceId,
+          }),
+        );
+
         return;
       }
-      
+
       print('📄 File found, preparing to send: $filePath');
-      
+
       // Read the file
       final fileBytes = await file.readAsBytes();
-      
+
       // Encrypt the file data
       final encryptedBytes = encryptFileBytes(fileBytes);
       final fileSize = encryptedBytes.length;
-      
+
       // First send metadata with encrypted size
       print('📤 Sending file metadata: $filePath (${fileSize} bytes)');
-      _channel!.sink.add(jsonEncode({
-        "type": "file_metadata",
-        "targetId": requesterId,
-        "filename": filePath,
-        "size": fileSize,
-        "fromId": _deviceId,
-        "encrypted": true, // Flag to indicate encryption
-      }));
-      
+      _channel!.sink.add(
+        jsonEncode({
+          "type": "file_metadata",
+          "targetId": requesterId,
+          "filename": filePath,
+          "size": fileSize,
+          "fromId": _deviceId,
+          "encrypted": true, // Flag to indicate encryption
+        }),
+      );
+
       // Wait a moment for metadata to be processed
       await Future.delayed(Duration(milliseconds: 500));
-      
+
       // Then send the actual encrypted file content
       print('📤 Sending encrypted file content: $filePath (${fileSize} bytes)');
       _channel!.sink.add(encryptedBytes);
-      
+
       print('✅ File sent successfully: $filePath');
-      
+
       // Optional: Track successful transfers
       _activeTransfers["outgoing-$filePath"] = {
         'deviceId': requesterId,
@@ -869,29 +907,31 @@ class ConnectionService with ChangeNotifier {
         'startTime': DateTime.now(),
         'encrypted': true,
       };
-      
+
       // Remove tracked transfer after delay
       Future.delayed(Duration(seconds: 5), () {
         _activeTransfers.remove("outgoing-$filePath");
         notifyListeners();
       });
-      
+
       // Create a non-intrusive notification
       _showFileTransferNotification(requesterId, filePath);
-      
+
       notifyListeners();
     } catch (e) {
       print('❌ Error sending requested file: $e');
-      
+
       // Notify requester about the error
       if (_channel != null) {
-        _channel!.sink.add(jsonEncode({
-          "type": "file_request_error",
-          "targetId": requesterId,
-          "filename": filePath,
-          "error": "Failed to send file: ${e.toString()}",
-          "fromId": _deviceId,
-        }));
+        _channel!.sink.add(
+          jsonEncode({
+            "type": "file_request_error",
+            "targetId": requesterId,
+            "filename": filePath,
+            "error": "Failed to send file: ${e.toString()}",
+            "fromId": _deviceId,
+          }),
+        );
       }
     }
   }
@@ -910,50 +950,52 @@ class ConnectionService with ChangeNotifier {
     }
 
     final fileName = path.basename(filePath);
-    
+
     // Fire an event that can be displayed as a snackbar or overlay
-    eventBus.fire(FileTransferStartedEvent(
-      deviceId: requesterId,
-      deviceName: requesterName,
-      fileName: fileName,
-      outgoing: true,
-    ));
+    eventBus.fire(
+      FileTransferStartedEvent(
+        deviceId: requesterId,
+        deviceName: requesterName,
+        fileName: fileName,
+        outgoing: true,
+      ),
+    );
   }
 }
 
-  // Add this event class to your event_bus_service.dart
-  class FileTransferStartedEvent {
-    final String deviceId;
-    final String deviceName;
-    final String fileName;
-    final bool outgoing;
+// Add this event class to your event_bus_service.dart
+class FileTransferStartedEvent {
+  final String deviceId;
+  final String deviceName;
+  final String fileName;
+  final bool outgoing;
 
-    FileTransferStartedEvent({
-      required this.deviceId, 
-      required this.deviceName, 
-      required this.fileName,
-      required this.outgoing,
-    });
-  }
+  FileTransferStartedEvent({
+    required this.deviceId,
+    required this.deviceName,
+    required this.fileName,
+    required this.outgoing,
+  });
+}
 
-  // @override
-  // void dispose() {
-  //   disconnect();
-  //   super.dispose();
-  // }
+// @override
+// void dispose() {
+//   disconnect();
+//   super.dispose();
+// }
 
-  // Add these encryption methods to your ConnectionService class, similar to Nearby_Devices_screen
-  // Use a secure key in production!
-  final _encryptionKey = encrypt.Key.fromUtf8(
-    'my32lengthsupersecretnooneknows!',
-  ); // 32 chars
+// Add these encryption methods to your ConnectionService class, similar to Nearby_Devices_screen
+// Use a secure key in production!
+final _encryptionKey = encrypt.Key.fromUtf8(
+  'my32lengthsupersecretnooneknows!',
+); // 32 chars
 
-  List<int> encryptFileBytes(List<int> bytes) {
-    final iv = encrypt.IV.fromSecureRandom(16); // Random IV for each file
-    final encrypter = encrypt.Encrypter(
-      encrypt.AES(_encryptionKey, mode: encrypt.AESMode.cbc),
-    );
-    final encrypted = encrypter.encryptBytes(bytes, iv: iv);
-    // Prepend IV to encrypted bytes
-    return [...iv.bytes, ...encrypted.bytes];
-  }
+List<int> encryptFileBytes(List<int> bytes) {
+  final iv = encrypt.IV.fromSecureRandom(16); // Random IV for each file
+  final encrypter = encrypt.Encrypter(
+    encrypt.AES(_encryptionKey, mode: encrypt.AESMode.cbc),
+  );
+  final encrypted = encrypter.encryptBytes(bytes, iv: iv);
+  // Prepend IV to encrypted bytes
+  return [...iv.bytes, ...encrypted.bytes];
+}
