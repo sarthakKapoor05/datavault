@@ -758,8 +758,11 @@ class _ShareScreenState extends State<ShareScreen>
   // Card for connected devices
   Widget _connectedDeviceCard(Map<String, dynamic> device) {
     // Don't show our own device in the list - use consistent property name
-    if (_deviceId != null && (device['deviceId'] == _deviceId || device['id'] == _deviceId)) {
-      return SizedBox.shrink(); // Hide our own device
+    final isOwnDevice = _deviceId != null && 
+        (device['deviceId'] == _deviceId || device['id'] == _deviceId);
+    
+    if (isOwnDevice) {
+      return SizedBox.shrink(); // Hide our own device completely
     }
 
     return Container(
