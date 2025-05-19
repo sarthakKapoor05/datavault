@@ -294,6 +294,14 @@ class _ShareScreenState extends State<ShareScreen>
 
   // Add this method to send a file to another client
   Future<void> sendFileToClient(String targetId) async {
+    // Don't allow sending files to our own device
+    if (_deviceId != null && targetId == _deviceId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Cannot send files to your own device')),
+      );
+      return;
+    }
+    
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       allowMultiple: true, // Allow multiple file selection
     );
@@ -707,15 +715,15 @@ class _ShareScreenState extends State<ShareScreen>
                       ),
                     ),
                   ),
-                  // Expanded(
-                  //   child: ListView.builder(
-                  //     scrollDirection: Axis.horizontal,
-                  //     itemCount: recentDevices.length,
-                  //     itemBuilder: (context, index) {
-                  //       return _recentDeviceCard(recentDevices[index]);
-                  //     },
-                  //   ),
-                  // ),
+                  Expanded(
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: recentDevices.length,
+                      itemBuilder: (context, index) {
+                        return _recentDeviceCard(recentDevices[index]);
+                      },
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -749,8 +757,8 @@ class _ShareScreenState extends State<ShareScreen>
 
   // Card for connected devices
   Widget _connectedDeviceCard(Map<String, dynamic> device) {
-    // Don't show our own device in the list
-    if (_deviceId != null && device['deviceId'] == _deviceId) {
+    // Don't show our own device in the list - use consistent property name
+    if (_deviceId != null && (device['deviceId'] == _deviceId || device['id'] == _deviceId)) {
       return SizedBox.shrink(); // Hide our own device
     }
 
@@ -836,17 +844,6 @@ class _ShareScreenState extends State<ShareScreen>
                 ),
               ],
             ),
-            SizedBox(height: 8),
-            // Chat button
-            ElevatedButton.icon(
-              icon: Icon(Icons.chat),
-              label: Text('Chat'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Color(0xFF50C2C9),
-                padding: EdgeInsets.symmetric(horizontal: 20),
-              ),
-              onPressed: () => navigateToFileTransfer(device['id']),
-            ),
           ],
 
           // Send mode UI
@@ -899,29 +896,6 @@ class _ShareScreenState extends State<ShareScreen>
               },
             ),
           ],
-          // Add browse button
-          ElevatedButton.icon(
-            icon: Icon(Icons.folder_open),
-            label: Text('Browse All Files'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Color(0xFF50C2C9),
-              padding: EdgeInsets.symmetric(horizontal: 20),
-            ),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder:
-                      (context) => RemoteFilesScreen(
-                        deviceId: device['id'],
-                        deviceName: device['name'] ?? 'Unknown Device',
-                        initialFiles: device['files'] ?? [],
-                        initialPath: '',
-                      ),
-                ),
-              );
-            },
-          ),
         ],
       ),
     );
@@ -1050,6 +1024,14 @@ class _ShareScreenState extends State<ShareScreen>
 
   // Add method to request file from another device
   void _requestFileFromDevice(String deviceId, String filePath) {
+    // Don't allow requesting files from our own device
+    if (_deviceId != null && deviceId == _deviceId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Cannot request files from your own device')),
+      );
+      return;
+    }
+    
     // Get the filename from the path
     final fileName = path.basename(filePath);
 
