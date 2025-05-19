@@ -487,9 +487,215 @@ class _ShareScreenState extends State<ShareScreen>
                 ),
               ),
 
-            const Padding(
-              padding: EdgeInsets.all(16.0),
+            // Always show the Shared Files section - move it above the device scanning animation
+            Padding(
+              padding: const EdgeInsets.all(16.0),
               child: Text(
+                'Shared Files',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF50C2C9),
+                ),
+              ),
+            ),
+            
+            // Show shared files from all clients in a scrollable container
+            _isConnected && _connectedClients.isNotEmpty 
+                ? Expanded(
+                    child: ListView.builder(
+                      itemCount: _connectedClients.length,
+                      itemBuilder: (context, index) {
+                        final client = _connectedClients[index];
+                        
+                        // Skip our own device
+                        if (_deviceId != null && client['id'] == _deviceId) {
+                          return SizedBox.shrink();
+                        }
+                        
+                        // Get files from this client
+                        final deviceName = client['name'] ?? 'Unknown Device';
+                        final files = List<Map<String, dynamic>>.from(
+                          client['files'] ?? [],
+                        );
+                        
+                        if (files.isEmpty) {
+                          return Card(
+                            margin: EdgeInsets.only(bottom: 16, left: 16, right: 16),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Files from $deviceName',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  SizedBox(height: 16),
+                                  Center(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(16.0),
+                                      child: Text('No shared files available'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+                        
+                        return Card(
+                          margin: EdgeInsets.only(bottom: 16, left: 16, right: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              ListTile(
+                                title: Text(
+                                  'Files from $deviceName',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                trailing: TextButton(
+                                  child: Text('View All'),
+                                  onPressed: () {
+                                    // Navigate to RemoteFilesScreen to see all files
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => RemoteFilesScreen(
+                                          deviceId: client['id'],
+                                          deviceName: deviceName,
+                                          initialFiles: [],
+                                          initialPath: '',
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                              ListView.builder(
+                                shrinkWrap: true,
+                                physics: NeverScrollableScrollPhysics(),
+                                padding: EdgeInsets.symmetric(horizontal: 8),
+                                itemCount: files.length > 5 ? 5 : files.length,
+                                itemBuilder: (context, i) {
+                                  final file = files[i];
+                                  final isDir = file['isDirectory'] ?? false;
+                                  
+                                  return ListTile(
+                                    leading: Icon(
+                                      isDir
+                                          ? Icons.folder
+                                          : _getFileIcon(file['name']),
+                                      color: isDir ? Colors.amber : Colors.blue,
+                                    ),
+                                    title: Text(file['name']),
+                                    subtitle: Text(
+                                      isDir
+                                          ? 'Directory'
+                                          : '${_formatFileSize(file['size'] ?? 0)}',
+                                    ),
+                                    trailing: ElevatedButton(
+                                      child: Text(
+                                        isDir ? 'Browse' : 'Get File',
+                                      ),
+                                      onPressed: () {
+                                        if (isDir) {
+                                          // Navigate to the directory browser
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) => RemoteFilesScreen(
+                                                deviceId: client['id'],
+                                                deviceName: deviceName,
+                                                initialFiles: [],
+                                                initialPath: file['path'],
+                                              ),
+                                            ),
+                                          );
+                                        } else {
+                                          // Download file
+                                          _requestFileFromDevice(
+                                            client['id'],
+                                            file['path'],
+                                          );
+                                        }
+                                      },
+                                    ),
+                                  );
+                                },
+                              ),
+                              if (files.length > 5)
+                                Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: Center(
+                                    child: TextButton(
+                                      child: Text('Show more (${files.length - 5} more items)'),
+                                      onPressed: () {
+                                        // Navigate to RemoteFilesScreen to see all files
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => RemoteFilesScreen(
+                                              deviceId: client['id'],
+                                              deviceName: deviceName,
+                                              initialFiles: files,
+                                              initialPath: '',
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  )
+                // Show "No connected devices" message when not connected or no clients
+                : Expanded(
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.devices_other,
+                            size: 64,
+                            color: Colors.grey,
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            _isConnected 
+                                ? 'No connected devices found'
+                                : 'Connect to see shared files',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey,
+                            ),
+                          ),
+                          SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            icon: Icon(Icons.refresh),
+                            label: Text(_isConnected ? 'Refresh' : 'Connect'),
+                            onPressed: startScanning,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+            
+            // Nearby Devices section
+            Container(
+              padding: EdgeInsets.all(16),
+              alignment: Alignment.centerLeft,
+              child: const Text(
                 'Nearby Devices',
                 style: TextStyle(
                   fontSize: 24,
@@ -498,19 +704,19 @@ class _ShareScreenState extends State<ShareScreen>
                 ),
               ),
             ),
-            Expanded(
-              flex: 2,
+            
+            // Your scanning animation
+            Container(
+              height: 200,
               child: Stack(
                 alignment: Alignment.center,
                 children: [
                   ...List.generate(4, (index) {
-                    double radius = (index + 1) * 50;
+                    double radius = (index + 1) * 40;
                     return AnimatedBuilder(
                       animation: _controller,
                       builder: (context, child) {
-                        double scale =
-                            1.0 +
-                            sin((_controller.value * 2 * pi) + index) * 0.05;
+                        double scale = 1.0 + sin((_controller.value * 2 * pi) + index) * 0.05;
                         return Transform.scale(
                           scale: scale,
                           child: Container(
@@ -518,9 +724,7 @@ class _ShareScreenState extends State<ShareScreen>
                             height: radius * 2,
                             decoration: BoxDecoration(
                               border: Border.all(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.secondary.withOpacity(0.3),
+                                color: Theme.of(context).colorScheme.secondary.withOpacity(0.3),
                                 width: 1.5,
                               ),
                               shape: BoxShape.circle,
@@ -552,10 +756,11 @@ class _ShareScreenState extends State<ShareScreen>
                 ],
               ),
             ),
+            
             // Display connected clients section
             if (_connectedClients.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(top: 8.0),
+                padding: const EdgeInsets.only(top: 8.0, bottom: 16.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -572,9 +777,10 @@ class _ShareScreenState extends State<ShareScreen>
                     ),
                     const SizedBox(height: 8),
                     SizedBox(
-                      height: 260, // Set this to the height of your device card
+                      height: 160, // Reduce height to fit better in the layout
                       child: ListView.builder(
                         scrollDirection: Axis.horizontal,
+                        padding: EdgeInsets.symmetric(horizontal: 8),
                         itemCount: _connectedClients.length,
                         itemBuilder: (context, index) {
                           return _connectedDeviceCard(_connectedClients[index]);
@@ -584,149 +790,6 @@ class _ShareScreenState extends State<ShareScreen>
                   ],
                 ),
               ),
-            // Display files from connected clients
-            if (_connectedClients.isNotEmpty) ...{
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Shared Files',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF50C2C9),
-                      ),
-                    ),
-                    SizedBox(height: 16),
-                    ...List.generate(_connectedClients.length, (index) {
-                      final client = _connectedClients[index];
-
-                      // Skip our own device
-                      if (_deviceId != null && client['id'] == _deviceId) {
-                        return SizedBox.shrink();
-                      }
-
-                      // Get files from this client
-                      final deviceName = client['name'] ?? 'Unknown Device';
-                      final files = List<Map<String, dynamic>>.from(
-                        client['files'] ?? [],
-                      );
-
-                      if (files.isEmpty) {
-                        return SizedBox.shrink();
-                      }
-
-                      return Card(
-                        margin: EdgeInsets.only(bottom: 16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Text(
-                                'Files from $deviceName',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ),
-                            Container(
-                              height: 200,
-                              child: ListView.builder(
-                                padding: EdgeInsets.all(8),
-                                itemCount: files.length > 5 ? 5 : files.length,
-                                itemBuilder: (context, i) {
-                                  final file = files[i];
-                                  final isDir = file['isDirectory'] ?? false;
-
-                                  return ListTile(
-                                    leading: Icon(
-                                      isDir
-                                          ? Icons.folder
-                                          : _getFileIcon(file['name']),
-                                      color: isDir ? Colors.amber : Colors.blue,
-                                    ),
-                                    title: Text(file['name']),
-                                    subtitle: Text(
-                                      isDir
-                                          ? 'Directory'
-                                          : '${_formatFileSize(file['size'] ?? 0)}',
-                                    ),
-                                    trailing: ElevatedButton(
-                                      child: Text(
-                                        isDir ? 'Browse' : 'Get File',
-                                      ),
-                                      onPressed: () {
-                                        if (isDir) {
-                                          // Navigate to the directory browser
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder:
-                                                  (
-                                                    context,
-                                                  ) => RemoteFilesScreen(
-                                                    deviceId: client['id'],
-                                                    deviceName: deviceName,
-                                                    initialFiles:
-                                                        isDir
-                                                            ? []
-                                                            : [], // We'll load the directory contents
-                                                    initialPath: file['path'],
-                                                  ),
-                                            ),
-                                          );
-                                        } else {
-                                          // Download file
-                                          _requestFileFromDevice(
-                                            client['id'],
-                                            file['path'],
-                                          );
-                                        }
-                                      },
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-                  ],
-                ),
-              ),
-            },
-            // Recent devices section
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      'Recent',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: recentDevices.length,
-                      itemBuilder: (context, index) {
-                        return _recentDeviceCard(recentDevices[index]);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
       ),
