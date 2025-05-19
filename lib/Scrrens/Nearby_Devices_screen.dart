@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'package:datavault/Scrrens/file_transfer_screen.dart';
+import 'package:datavault/Scrrens/remote_files_screen.dart';
 import 'package:datavault/utils/storage_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -628,14 +629,26 @@ class _ShareScreenState extends State<ShareScreen>
                                       trailing: ElevatedButton(
                                         child: Text(isDir ? 'Browse' : 'Get File'),
                                         onPressed: () {
-                                          // Request file transfer
-                                          if (!isDir) {
+                                          if (isDir) {
+                                            // Navigate to the directory browser
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) => RemoteFilesScreen(
+                                                  deviceId: client['id'],
+                                                  deviceName: deviceName,
+                                                  initialFiles: isDir ? [] : [],  // We'll load the directory contents
+                                                  initialPath: file['path'],
+                                                ),
+                                              ),
+                                            );
+                                          } else {
+                                            // Download file
                                             _requestFileFromDevice(
                                               client['id'], 
                                               file['path']
                                             );
                                           }
-                                          // Or navigate to directory
                                         },
                                       ),
                                     );
@@ -858,6 +871,28 @@ class _ShareScreenState extends State<ShareScreen>
               },
             ),
           ],
+          // Add browse button
+          ElevatedButton.icon(
+            icon: Icon(Icons.folder_open),
+            label: Text('Browse All Files'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFF50C2C9),
+              padding: EdgeInsets.symmetric(horizontal: 20),
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => RemoteFilesScreen(
+                    deviceId: device['id'],
+                    deviceName: device['name'] ?? 'Unknown Device',
+                    initialFiles: device['files'] ?? [],
+                    initialPath: '',
+                  ),
+                ),
+              );
+            },
+          ),
         ],
       ),
     );
