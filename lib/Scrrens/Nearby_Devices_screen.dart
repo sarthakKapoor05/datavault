@@ -130,9 +130,10 @@ class _ShareScreenState extends State<ShareScreen>
               if (data['type'] == 'directory_listing_request') {
                 final path = data['path'] ?? '';
                 final requesterId = data['requesterId'];
+                final recursive = data['recursive'] ?? false;
                 
                 if (requesterId != null) {
-                  _handleDirectoryListingRequest(path, requesterId);
+                  _handleDirectoryListingRequest(path, requesterId, recursive);
                 }
               }
             }
@@ -1046,12 +1047,12 @@ class _ShareScreenState extends State<ShareScreen>
 
   // Add this method to your _ShareScreenState class
 
-  Future<void> _handleDirectoryListingRequest(String requestedPath, String requesterId) async {
+  Future<void> _handleDirectoryListingRequest(String requestedPath, String requesterId, bool recursive) async {
   try {
     final storagePath = await StorageManager.getDefaultStoragePath();
     List<Map<String, dynamic>> files = [];
     
-    // Sanitize requested path to prevent directory traversal attacks
+    // Sanitize requested path
     final safePath = requestedPath.replaceAll('..', '').replaceAll('\\', '/');
     
     // Construct the full path to the requested directory
@@ -1059,25 +1060,38 @@ class _ShareScreenState extends State<ShareScreen>
     final directory = Directory(fullPath);
     
     if (await directory.exists()) {
-      final entities = await directory.list().toList();
-      
-      for (var entity in entities) {
-        try {
-          final stat = await entity.stat();
-          final name = path.basename(entity.path);
-          final isDir = entity is Directory;
-          
-          files.add({
-            'name': name,
-            'path': path.join(safePath, name).replaceAll('\\', '/'),
-            'isDirectory': isDir,
-            'size': isDir ? 0 : stat.size,
-            'modified': stat.modified.toIso8601String(),
-          });
-        } catch (e) {
-          print('Error processing file $entity: $e');
+      // Recursive mode fetches all files and maintains proper paths
+      if (recursive) {
+        await _collectFilesRecursively(directory, files, storagePath, safePath);
+      } else {
+        // Regular mode just gets immediate files
+        final entities = await directory.list().toList();
+        
+        for (var entity in entities) {
+          try {
+            final stat = await entity.stat();
+            final name = path.basename(entity.path);
+            final isDir = entity is Directory;
+            
+            files.add({
+              'name': name,
+              'path': safePath.isEmpty ? name : '$safePath/$name',
+              'isDirectory': isDir,
+              'size': isDir ? 0 : stat.size,
+              'modified': stat.modified.toIso8601String(),
+            });
+          } catch (e) {
+            print('Error processing file $entity: $e');
+          }
         }
       }
+      
+      // Sort files: directories first, then alphabetically
+      files.sort((a, b) {
+        if (a['isDirectory'] == true && b['isDirectory'] != true) return -1;
+        if (a['isDirectory'] != true && b['isDirectory'] == true) return 1;
+        return (a['name'] as String).compareTo(b['name'] as String);
+      });
     }
     
     // Send response back to server
@@ -1091,7 +1105,6 @@ class _ShareScreenState extends State<ShareScreen>
     }
   } catch (e) {
     print('Error handling directory listing request: $e');
-    // Send empty response on error
     if (_channel != null) {
       _channel!.sink.add(jsonEncode({
         "type": "file_list_response",
@@ -1101,6 +1114,55 @@ class _ShareScreenState extends State<ShareScreen>
         "requesterId": requesterId,
       }));
     }
+  }
+}
+
+// Helper method to collect files recursively
+Future<void> _collectFilesRecursively(
+  Directory directory, 
+  List<Map<String, dynamic>> files,
+  String basePath,
+  String currentRelativePath
+) async {
+  if (!await directory.exists()) return;
+  
+  try {
+    final entities = await directory.list().toList();
+    
+    for (var entity in entities) {
+      try {
+        final stat = await entity.stat();
+        final name = path.basename(entity.path);
+        final isDir = entity is Directory;
+        final relativePath = currentRelativePath.isEmpty 
+            ? name 
+            : '$currentRelativePath/$name';
+            
+        files.add({
+          'name': name,
+          'path': relativePath,
+          'fullPath': entity.path,
+          'isDirectory': isDir,
+          'size': isDir ? 0 : stat.size,
+          'modified': stat.modified.toIso8601String(),
+          'parentPath': currentRelativePath,
+        });
+        
+        // Recursively process subdirectories
+        if (isDir) {
+          await _collectFilesRecursively(
+            Directory(entity.path),
+            files,
+            basePath,
+            relativePath,
+          );
+        }
+      } catch (e) {
+        print('Error processing file $entity during recursive scan: $e');
+      }
+    }
+  } catch (e) {
+    print('Error listing directory $directory: $e');
   }
 }
 }
