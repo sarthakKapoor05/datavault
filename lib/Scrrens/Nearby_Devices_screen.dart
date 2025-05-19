@@ -246,27 +246,29 @@ class _ShareScreenState extends State<ShareScreen>
 
       // Check if the storage limit would be exceeded by this file
       final storageInfo = await _checkStorageLimits(fileSize);
-      
+
       if (!storageInfo['isSpaceAvailable']) {
         // Show storage full alert
         _showStorageFullDialog(senderName, fileName, fileSize, storageInfo);
-        
+
         // Reject the file transfer
         if (_channel != null) {
-          _channel!.sink.add(jsonEncode({
-            "type": "file_transfer_rejected",
-            "reason": "storage_full",
-            "targetId": senderId,
-            "filename": fileName
-          }));
+          _channel!.sink.add(
+            jsonEncode({
+              "type": "file_transfer_rejected",
+              "reason": "storage_full",
+              "targetId": senderId,
+              "filename": fileName,
+            }),
+          );
         }
-        
+
         // Reset transfer mode
         setState(() {
           _expectedFile = null;
           _transferMode = FileTransferMode.idle;
         });
-        
+
         return;
       }
 
@@ -324,7 +326,7 @@ class _ShareScreenState extends State<ShareScreen>
       );
       return;
     }
-    
+
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       allowMultiple: true, // Allow multiple file selection
     );
@@ -522,222 +524,242 @@ class _ShareScreenState extends State<ShareScreen>
                 ),
               ),
             ),
-            
+
             // Show shared files from all clients in a scrollable container
-            _isConnected && _connectedClients.isNotEmpty 
+            _isConnected && _connectedClients.isNotEmpty
                 ? Expanded(
-                    child: ListView.builder(
-                      itemCount: _connectedClients.length,
-                      itemBuilder: (context, index) {
-                        final client = _connectedClients[index];
-                        
-                        // Skip our own device
-                        if (_deviceId != null && client['id'] == _deviceId) {
-                          return SizedBox.shrink();
-                        }
-                        
-                        // Get files from this client
-                        final deviceName = client['name'] ?? 'Unknown Device';
-                        final files = List<Map<String, dynamic>>.from(
-                          client['files'] ?? [],
-                        );
-                        
-                        if (files.isEmpty) {
-                          return Card(
-                            margin: EdgeInsets.only(bottom: 16, left: 16, right: 16),
-                            child: Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Files from $deviceName',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                  SizedBox(height: 16),
-                                  Center(
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(16.0),
-                                      child: Text('No shared files available'),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }
-                        
+                  child: ListView.builder(
+                    itemCount: _connectedClients.length,
+                    itemBuilder: (context, index) {
+                      final client = _connectedClients[index];
+
+                      // Skip our own device
+                      if (_deviceId != null && client['id'] == _deviceId) {
+                        return SizedBox.shrink();
+                      }
+
+                      // Get files from this client
+                      final deviceName = client['name'] ?? 'Unknown Device';
+                      final files = List<Map<String, dynamic>>.from(
+                        client['files'] ?? [],
+                      );
+
+                      if (files.isEmpty) {
                         return Card(
-                          margin: EdgeInsets.only(bottom: 16, left: 16, right: 16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              ListTile(
-                                title: Text(
+                          margin: EdgeInsets.only(
+                            bottom: 16,
+                            left: 16,
+                            right: 16,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
                                   'Files from $deviceName',
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 16,
                                   ),
                                 ),
-                                trailing: TextButton(
-                                  child: Text('View All'),
-                                  onPressed: () {
-                                    // Navigate to RemoteFilesScreen to see all files
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => RemoteFilesScreen(
-                                          deviceId: client['id'],
-                                          deviceName: deviceName,
-                                          initialFiles: [],
-                                          initialPath: '',
-                                        ),
-                                      ),
-                                    );
-                                  },
+                                SizedBox(height: 16),
+                                Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16.0),
+                                    child: Text('No shared files available'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+
+                      return Card(
+                        margin: EdgeInsets.only(
+                          bottom: 16,
+                          left: 16,
+                          right: 16,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ListTile(
+                              title: Text(
+                                'Files from $deviceName',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
                                 ),
                               ),
-                              ListView.builder(
-                                shrinkWrap: true,
-                                physics: NeverScrollableScrollPhysics(),
-                                padding: EdgeInsets.symmetric(horizontal: 8),
-                                itemCount: files.length > 5 ? 5 : files.length,
-                                itemBuilder: (context, i) {
-                                  final file = files[i];
-                                  final isDir = file['isDirectory'] ?? false;
-                                  
-                                  return ListTile(
-                                    leading: Icon(
-                                      isDir
-                                          ? Icons.folder
-                                          : _getFileIcon(file['name']),
-                                      color: isDir ? Colors.amber : Colors.blue,
-                                    ),
-                                    title: Text(file['name']),
-                                    subtitle: Text(
-                                      isDir
-                                          ? 'Directory'
-                                          : '${_formatFileSize(file['size'] ?? 0)}',
-                                    ),
-                                    trailing: ElevatedButton(
-                                      child: Text(
-                                        isDir ? 'Browse' : 'Get File',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w500,
-                                          color: Colors.white,  // White text for better contrast
-                                        ),
-                                      ),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: isDir ? Colors.amber[600] : Colors.blue[600], // Darker shades for better contrast
-                                        foregroundColor: Colors.white,
-                                        elevation: 2,
-                                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                        minimumSize: Size(80, 32),
-                                      ),
-                                      onPressed: () {
-                                        if (isDir) {
-                                          // Navigate to the directory browser
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (context) => RemoteFilesScreen(
-                                                deviceId: client['id'],
-                                                deviceName: deviceName,
-                                                initialFiles: [],
-                                                initialPath: file['path'],
-                                              ),
-                                            ),
-                                          );
-                                        } else {
-                                          // Download file
-                                          _requestFileFromDevice(
-                                            client['id'],
-                                            file['path'],
-                                          );
-                                        }
-                                      },
+                              trailing: TextButton(
+                                child: Text('View All'),
+                                onPressed: () {
+                                  // Navigate to RemoteFilesScreen to see all files
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder:
+                                          (context) => RemoteFilesScreen(
+                                            deviceId: client['id'],
+                                            deviceName: deviceName,
+                                            initialFiles: [],
+                                            initialPath: '',
+                                          ),
                                     ),
                                   );
                                 },
                               ),
-                              if (files.length > 5)
-                                Padding(
-                                  padding: const EdgeInsets.all(8.0),
-                                  child: Center(
-                                    child: TextButton(
-                                      child: Text('Show more (${files.length - 5} more items)'),
-                                      onPressed: () {
-                                        // Navigate to RemoteFilesScreen to see all files
+                            ),
+                            ListView.builder(
+                              shrinkWrap: true,
+                              physics: NeverScrollableScrollPhysics(),
+                              padding: EdgeInsets.symmetric(horizontal: 8),
+                              itemCount: files.length > 5 ? 5 : files.length,
+                              itemBuilder: (context, i) {
+                                final file = files[i];
+                                final isDir = file['isDirectory'] ?? false;
+
+                                return ListTile(
+                                  leading: Icon(
+                                    isDir
+                                        ? Icons.folder
+                                        : _getFileIcon(file['name']),
+                                    color: isDir ? Colors.amber : Colors.blue,
+                                  ),
+                                  title: Text(file['name']),
+                                  subtitle: Text(
+                                    isDir
+                                        ? 'Directory'
+                                        : '${_formatFileSize(file['size'] ?? 0)}',
+                                  ),
+                                  trailing: ElevatedButton(
+                                    child: Text(
+                                      isDir ? 'Browse' : 'Get File',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500,
+                                        color:
+                                            Colors
+                                                .white, // White text for better contrast
+                                      ),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor:
+                                          isDir
+                                              ? Colors.amber[600]
+                                              : Colors
+                                                  .blue[600], // Darker shades for better contrast
+                                      foregroundColor: Colors.white,
+                                      elevation: 2,
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 6,
+                                      ),
+                                      minimumSize: Size(80, 32),
+                                    ),
+                                    onPressed: () {
+                                      if (isDir) {
+                                        // Navigate to the directory browser
                                         Navigator.push(
                                           context,
                                           MaterialPageRoute(
-                                            builder: (context) => RemoteFilesScreen(
-                                              deviceId: client['id'],
-                                              deviceName: deviceName,
-                                              initialFiles: files,
-                                              initialPath: '',
-                                            ),
+                                            builder:
+                                                (context) => RemoteFilesScreen(
+                                                  deviceId: client['id'],
+                                                  deviceName: deviceName,
+                                                  initialFiles: [],
+                                                  initialPath: file['path'],
+                                                ),
                                           ),
                                         );
-                                      },
+                                      } else {
+                                        // Download file
+                                        _requestFileFromDevice(
+                                          client['id'],
+                                          file['path'],
+                                        );
+                                      }
+                                    },
+                                  ),
+                                );
+                              },
+                            ),
+                            if (files.length > 5)
+                              Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: Center(
+                                  child: TextButton(
+                                    child: Text(
+                                      'Show more (${files.length - 5} more items)',
                                     ),
+                                    onPressed: () {
+                                      // Navigate to RemoteFilesScreen to see all files
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder:
+                                              (context) => RemoteFilesScreen(
+                                                deviceId: client['id'],
+                                                deviceName: deviceName,
+                                                initialFiles: files,
+                                                initialPath: '',
+                                              ),
+                                        ),
+                                      );
+                                    },
                                   ),
                                 ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  )
+                              ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                )
                 // Show "No connected devices" message when not connected or no clients
                 : Expanded(
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.devices_other,
-                            size: 64,
-                            color: Colors.grey,
-                          ),
-                          SizedBox(height: 16),
-                          Text(
-                            _isConnected 
-                                ? 'No connected devices found'
-                                : 'Connect to see shared files',
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.devices_other, size: 64, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text(
+                          _isConnected
+                              ? 'No connected devices found'
+                              : 'Connect to see shared files',
+                          style: TextStyle(fontSize: 16, color: Colors.grey),
+                        ),
+                        SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          icon: Icon(Icons.refresh, color: Colors.white),
+                          label: Text(
+                            _isConnected ? 'Refresh' : 'Connect',
                             style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                          SizedBox(height: 16),
-                          ElevatedButton.icon(
-                            icon: Icon(Icons.refresh, color: Colors.white),
-                            label: Text(
-                              _isConnected ? 'Refresh' : 'Connect',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Color(
+                              0xFF3DABB5,
+                            ), // Slightly darker teal for better contrast
+                            foregroundColor: Colors.white,
+                            elevation: 2,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
                             ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Color(0xFF3DABB5), // Slightly darker teal for better contrast
-                              foregroundColor: Colors.white,
-                              elevation: 2,
-                              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            ),
-                            onPressed: startScanning,
                           ),
-                        ],
-                      ),
+                          onPressed: startScanning,
+                        ),
+                      ],
                     ),
                   ),
-            
+                ),
+
             // Nearby Devices section
             Container(
               padding: EdgeInsets.all(16),
@@ -751,7 +773,7 @@ class _ShareScreenState extends State<ShareScreen>
                 ),
               ),
             ),
-            
+
             // Your scanning animation
             Container(
               height: 120, // Reduced height from 200
@@ -765,7 +787,9 @@ class _ShareScreenState extends State<ShareScreen>
                     return AnimatedBuilder(
                       animation: _controller,
                       builder: (context, child) {
-                        double scale = 1.0 + sin((_controller.value * 2 * pi) + index) * 0.05;
+                        double scale =
+                            1.0 +
+                            sin((_controller.value * 2 * pi) + index) * 0.05;
                         return Transform.scale(
                           scale: scale,
                           child: Container(
@@ -773,7 +797,9 @@ class _ShareScreenState extends State<ShareScreen>
                             height: radius * 2,
                             decoration: BoxDecoration(
                               border: Border.all(
-                                color: Theme.of(context).colorScheme.secondary.withOpacity(0.3),
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.secondary.withOpacity(0.3),
                                 width: 1.5,
                               ),
                               shape: BoxShape.circle,
@@ -829,7 +855,7 @@ class _ShareScreenState extends State<ShareScreen>
                 ],
               ),
             ),
-            
+
             // Display connected clients section
             if (_connectedClients.isNotEmpty)
               Padding(
@@ -895,16 +921,17 @@ class _ShareScreenState extends State<ShareScreen>
   // Update the _connectedDeviceCard method to fix overflow issues
   Widget _connectedDeviceCard(Map<String, dynamic> device) {
     // Don't show our own device in the list
-    final isOwnDevice = _deviceId != null && 
+    final isOwnDevice =
+        _deviceId != null &&
         (device['deviceId'] == _deviceId || device['id'] == _deviceId);
-    
+
     if (isOwnDevice) {
       return SizedBox.shrink();
     }
 
     return Container(
-      width: 180, // Reduced width from 330
-      height: 180, // Reduced height to fit content better
+      width: 180,
+      height: 160, // Match the ListView.builder height
       margin: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
@@ -913,128 +940,139 @@ class _ShareScreenState extends State<ShareScreen>
           BoxShadow(color: Colors.black26, blurRadius: 5, offset: Offset(0, 2)),
         ],
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            _transferMode == FileTransferMode.sending
-                ? Icons.upload
-                : Icons.devices,
-            size: 28, // Reduced from 30
-            color: _transferMode == FileTransferMode.sending
-                ? Colors.amber
-                : Colors.white,
-          ),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: Text(
-              device['name'] ?? 'Unknown',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-                fontSize: 14, // Reduced from default
-              ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              _transferMode == FileTransferMode.sending
+                  ? Icons.upload
+                  : Icons.devices,
+              size: 28, // Reduced from 30
+              color:
+                  _transferMode == FileTransferMode.sending
+                      ? Colors.amber
+                      : Colors.white,
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: Text(
-              device['id'] ?? 'Unknown ID',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.secondary,
-                fontSize: 11, // Reduced size
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Show different buttons based on the transfer mode
-          if (_transferMode == FileTransferMode.idle) ...[
-            // Only show Send button with improved contrast
-            ElevatedButton.icon(
-              icon: Icon(Icons.upload, size: 14, color: Colors.black87),
-              label: Text('Send', 
-                style: TextStyle(
-                  fontSize: 12, 
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87, // Darker text for better contrast on amber
-                )
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber[400], // Brighter amber for better visibility
-                foregroundColor: Colors.black87,
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                minimumSize: Size(100, 36),
-                elevation: 2, // Add slight elevation for better visual distinction
-              ),
-              onPressed: () {
-                setState(() {
-                  _transferMode = FileTransferMode.sending;
-                });
-              },
-            ),
-          ],
-
-          // Send mode UI
-          if (_transferMode == FileTransferMode.sending) ...[
+            const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8.0),
               child: Text(
-                'Select files',
-                style: TextStyle(
-                  color: Colors.amber[300], // Brighter shade for better contrast
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
+                device['name'] ?? 'Unknown',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  fontSize: 14, // Reduced from default
+                ),
               ),
             ),
-            SizedBox(height: 8),
-            SizedBox(
-              height: 36,
-              child: ElevatedButton(
-                child: Text('Browse', 
-                  style: TextStyle(
-                    fontSize: 12, 
-                    fontWeight: FontWeight.w500,
-                    color: Colors.black87, // Dark text on amber background
-                  )
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Text(
+                device['id'] ?? 'Unknown ID',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.secondary,
+                  fontSize: 11, // Reduced size
                 ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.amber[400], // Brighter amber
-                  foregroundColor: Colors.black87,
-                  elevation: 2,
-                ),
-                onPressed: () => sendFileToClient(device['id']),
               ),
             ),
-            SizedBox(height: 4),
-            SizedBox(
-              height: 30,
-              child: TextButton(
-                child: Text('Cancel', 
+            const SizedBox(height: 12),
+
+            // Show different buttons based on the transfer mode
+            if (_transferMode == FileTransferMode.idle) ...[
+              // Only show Send button with improved contrast
+              ElevatedButton.icon(
+                icon: Icon(Icons.upload, size: 14, color: Colors.black87),
+                label: Text(
+                  'Send',
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.red[300], // More visible cancel button
-                    fontWeight: FontWeight.w500,
-                  )
+                    fontWeight: FontWeight.bold,
+                    color:
+                        Colors
+                            .black87, // Darker text for better contrast on amber
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor:
+                      Colors.amber[400], // Brighter amber for better visibility
+                  foregroundColor: Colors.black87,
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  minimumSize: Size(100, 36),
+                  elevation:
+                      2, // Add slight elevation for better visual distinction
                 ),
                 onPressed: () {
                   setState(() {
-                    _transferMode = FileTransferMode.idle;
+                    _transferMode = FileTransferMode.sending;
                   });
                 },
               ),
-            ),
+            ],
+
+            // Send mode UI
+            if (_transferMode == FileTransferMode.sending) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: Text(
+                  'Select files',
+                  style: TextStyle(
+                    color:
+                        Colors.amber[300], // Brighter shade for better contrast
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              SizedBox(height: 8),
+              SizedBox(
+                height: 36,
+                child: ElevatedButton(
+                  child: Text(
+                    'Browse',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87, // Dark text on amber background
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.amber[400], // Brighter amber
+                    foregroundColor: Colors.black87,
+                    elevation: 2,
+                  ),
+                  onPressed: () => sendFileToClient(device['id']),
+                ),
+              ),
+              SizedBox(height: 4),
+              SizedBox(
+                height: 30,
+                child: TextButton(
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.red[300], // More visible cancel button
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _transferMode = FileTransferMode.idle;
+                    });
+                  },
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -1169,7 +1207,7 @@ class _ShareScreenState extends State<ShareScreen>
       );
       return;
     }
-    
+
     // Get the filename from the path
     final fileName = path.basename(filePath);
 
@@ -1197,7 +1235,9 @@ class _ShareScreenState extends State<ShareScreen>
     String formattedDate = "";
     if (fileDetails['modified'] != null) {
       try {
-        final DateTime modifiedDate = DateTime.parse(fileDetails['modified'].toString());
+        final DateTime modifiedDate = DateTime.parse(
+          fileDetails['modified'].toString(),
+        );
         formattedDate = DateFormat('MMM d, yyyy h:mm a').format(modifiedDate);
       } catch (e) {
         formattedDate = fileDetails['modified'].toString();
@@ -1207,118 +1247,130 @@ class _ShareScreenState extends State<ShareScreen>
     // Show file details dialog with improved contrast
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        titlePadding: EdgeInsets.zero,
-        title: Container(
-          padding: EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Color(0xFF50C2C9),
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(4),
-              topRight: Radius.circular(4),
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(_getFileIcon(fileName), color: Colors.white, size: 24),
-              SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'File Details',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: EdgeInsets.all(12),
+      builder:
+          (context) => AlertDialog(
+            titlePadding: EdgeInsets.zero,
+            title: Container(
+              padding: EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(4),
+                color: Color(0xFF50C2C9),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(4),
+                  topRight: Radius.circular(4),
+                ),
               ),
               child: Row(
                 children: [
-                  Icon(_getFileIcon(fileName), color: Color(0xFF3D88C3), size: 36),
+                  Icon(_getFileIcon(fileName), color: Colors.white, size: 24),
                   SizedBox(width: 12),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          fileName,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: Colors.black87,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          _formatFileSize(fileDetails?['size'] ?? 0),
-                          style: TextStyle(
-                            color: Colors.black54,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      'File Details',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-            SizedBox(height: 16),
-            _buildDetailRow(
-              'Path',
-              filePath,
-              iconData: Icons.folder_outlined,
-              iconColor: Colors.amber[700] ?? Colors.amber, // Provide fallback color
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _getFileIcon(fileName),
+                        color: Color(0xFF3D88C3),
+                        size: 36,
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              fileName,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: Colors.black87,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              _formatFileSize(fileDetails?['size'] ?? 0),
+                              style: TextStyle(
+                                color: Colors.black54,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 16),
+                _buildDetailRow(
+                  'Path',
+                  filePath,
+                  iconData: Icons.folder_outlined,
+                  iconColor:
+                      Colors.amber[700] ??
+                      Colors.amber, // Provide fallback color
+                ),
+                if (formattedDate.isNotEmpty)
+                  _buildDetailRow(
+                    'Modified',
+                    formattedDate,
+                    iconData: Icons.access_time,
+                    iconColor:
+                        Colors.green[700] ??
+                        Colors.green, // Provide fallback color
+                  ),
+              ],
             ),
-            if (formattedDate.isNotEmpty)
-              _buildDetailRow(
-                'Modified',
-                formattedDate,
-                iconData: Icons.access_time,
-                iconColor: Colors.green[700] ?? Colors.green, // Provide fallback color
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                style: TextButton.styleFrom(foregroundColor: Colors.grey[700]),
+                child: Text('Cancel'),
               ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.grey[700],
-            ),
-            child: Text('Cancel'),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  // Start the download
+                  _startDownload(deviceId, filePath, fileName);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Color(0xFF50C2C9),
+                  foregroundColor: Colors.white,
+                  elevation: 2,
+                ),
+                child: Text('Download'),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // Start the download
-              _startDownload(deviceId, filePath, fileName);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Color(0xFF50C2C9),
-              foregroundColor: Colors.white,
-              elevation: 2,
-            ),
-            child: Text('Download'),
-          ),
-        ],
-      ),
     );
   }
 
   // Updated _buildDetailRow method with null safety
-  Widget _buildDetailRow(String title, String value, {IconData? iconData, required Color iconColor}) {
+  Widget _buildDetailRow(
+    String title,
+    String value, {
+    IconData? iconData,
+    required Color iconColor,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -1341,10 +1393,7 @@ class _ShareScreenState extends State<ShareScreen>
           Expanded(
             child: Text(
               value,
-              style: TextStyle(
-                color: Colors.black87,
-                height: 1.3,
-              ),
+              style: TextStyle(color: Colors.black87, height: 1.3),
               overflow: TextOverflow.ellipsis,
               maxLines: 3,
             ),
@@ -1493,10 +1542,10 @@ class _ShareScreenState extends State<ShareScreen>
       // Get the current storage path
       final storagePath = await StorageManager.getDefaultStoragePath();
       final storageDir = Directory(storagePath);
-      
+
       // Get the max storage size limit
       final maxStorageSize = await StorageManager.getMaxStorageSize();
-      
+
       // Calculate current usage
       int currentUsage = 0;
       if (await storageDir.exists()) {
@@ -1508,96 +1557,106 @@ class _ShareScreenState extends State<ShareScreen>
           }
         }
       }
-      
+
       // Check if adding this file would exceed the limit
-      final isSpaceAvailable = (currentUsage + incomingFileSize) <= maxStorageSize;
+      final isSpaceAvailable =
+          (currentUsage + incomingFileSize) <= maxStorageSize;
       final remainingSpace = maxStorageSize - currentUsage;
-      
+
       return {
         'isSpaceAvailable': isSpaceAvailable,
         'currentUsage': currentUsage,
         'maxStorageSize': maxStorageSize,
         'remainingSpace': remainingSpace,
-        'requiredSpace': incomingFileSize
+        'requiredSpace': incomingFileSize,
       };
     } catch (e) {
       print('Error checking storage limits: $e');
       // In case of error, default to allowing the transfer
-      return {
-        'isSpaceAvailable': true,
-        'error': e.toString()
-      };
+      return {'isSpaceAvailable': true, 'error': e.toString()};
     }
   }
 
   // Add method to show storage full dialog
-  void _showStorageFullDialog(String senderName, String fileName, int fileSize, Map<String, dynamic> storageInfo) {
+  void _showStorageFullDialog(
+    String senderName,
+    String fileName,
+    int fileSize,
+    Map<String, dynamic> storageInfo,
+  ) {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(Icons.storage, color: Colors.red),
-            SizedBox(width: 10),
-            Expanded(child: Text('Storage Full')),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Cannot receive file from $senderName due to insufficient storage space.',
-              style: TextStyle(fontWeight: FontWeight.bold),
+      builder:
+          (context) => AlertDialog(
+            title: Row(
+              children: [
+                Icon(Icons.storage, color: Colors.red),
+                SizedBox(width: 10),
+                Expanded(child: Text('Storage Full')),
+              ],
             ),
-            SizedBox(height: 16),
-            Text('File: $fileName'),
-            Text('Size: ${_formatFileSize(fileSize)}'),
-            SizedBox(height: 16),
-            _buildStorageProgressBar(
-              storageInfo['currentUsage'],
-              storageInfo['maxStorageSize'],
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Cannot receive file from $senderName due to insufficient storage space.',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: 16),
+                Text('File: $fileName'),
+                Text('Size: ${_formatFileSize(fileSize)}'),
+                SizedBox(height: 16),
+                _buildStorageProgressBar(
+                  storageInfo['currentUsage'],
+                  storageInfo['maxStorageSize'],
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Currently used: ${_formatFileSize(storageInfo['currentUsage'])}',
+                ),
+                Text(
+                  'Remaining space: ${_formatFileSize(storageInfo['remainingSpace'])}',
+                ),
+                Text(
+                  'Required space: ${_formatFileSize(storageInfo['requiredSpace'])}',
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'Please free up some space or increase your storage limit in Settings.',
+                  style: TextStyle(fontStyle: FontStyle.italic),
+                ),
+              ],
             ),
-            SizedBox(height: 8),
-            Text('Currently used: ${_formatFileSize(storageInfo['currentUsage'])}'),
-            Text('Remaining space: ${_formatFileSize(storageInfo['remainingSpace'])}'),
-            Text('Required space: ${_formatFileSize(storageInfo['requiredSpace'])}'),
-            SizedBox(height: 16),
-            Text(
-              'Please free up some space or increase your storage limit in Settings.',
-              style: TextStyle(fontStyle: FontStyle.italic),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('OK'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('OK'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  // Open settings screen to adjust storage limit
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => SettingsScreen()),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Color(0xFF50C2C9),
+                ),
+                child: Text('Go to Settings'),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // Open settings screen to adjust storage limit
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => SettingsScreen()),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Color(0xFF50C2C9),
-            ),
-            child: Text('Go to Settings'),
-          ),
-        ],
-      ),
     );
   }
 
   // Add helper method to build storage progress bar
   Widget _buildStorageProgressBar(int used, int total) {
     final double percentage = total > 0 ? used / total : 0;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1610,9 +1669,11 @@ class _ShareScreenState extends State<ShareScreen>
           value: percentage,
           backgroundColor: Colors.grey[300],
           valueColor: AlwaysStoppedAnimation<Color>(
-            percentage > 0.9 ? Colors.red : 
-            percentage > 0.7 ? Colors.orange : 
-            Colors.green,
+            percentage > 0.9
+                ? Colors.red
+                : percentage > 0.7
+                ? Colors.orange
+                : Colors.green,
           ),
           minHeight: 8,
           borderRadius: BorderRadius.circular(4),
@@ -1622,12 +1683,16 @@ class _ShareScreenState extends State<ShareScreen>
   }
 
   // Add this method to your _ShareScreenState class
-  Future<void> _startDownload(String deviceId, String filePath, String fileName) async {
+  Future<void> _startDownload(
+    String deviceId,
+    String filePath,
+    String fileName,
+  ) async {
     try {
       setState(() {
         _transferMode = FileTransferMode.receiving;
       });
-      
+
       // Show a snackbar to indicate download started
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1638,31 +1703,31 @@ class _ShareScreenState extends State<ShareScreen>
                 valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
               ),
               SizedBox(width: 16),
-              Expanded(
-                child: Text('Requesting file: $fileName from device'),
-              ),
+              Expanded(child: Text('Requesting file: $fileName from device')),
             ],
           ),
           duration: Duration(seconds: 5),
         ),
       );
-      
+
       // Send request to server
       if (_channel != null) {
-        _channel!.sink.add(jsonEncode({
-          "type": "request_file",
-          "targetId": deviceId,
-          "filename": filePath,
-        }));
-        
+        _channel!.sink.add(
+          jsonEncode({
+            "type": "request_file",
+            "targetId": deviceId,
+            "filename": filePath,
+          }),
+        );
+
         // File data will be received through the broadcast stream listener
         // that already exists, which calls _handleIncomingFile
       }
     } catch (e) {
       print('Error requesting file: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error requesting file: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error requesting file: $e')));
       setState(() {
         _transferMode = FileTransferMode.idle;
       });

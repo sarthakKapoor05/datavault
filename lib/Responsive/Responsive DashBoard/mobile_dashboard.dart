@@ -427,10 +427,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 ),
               )
             else
-              _isGridView 
-                  ? _buildGridView()
-                  : _buildListView(),
-                  
+              _isGridView ? _buildGridView() : _buildListView(),
+
             if (_storageFiles.length > 10) // If we have more than 10 files
               Padding(
                 padding: const EdgeInsets.only(top: 16.0),
@@ -442,9 +440,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => StorageFilesScreen(
-                            initialPath: _currentStoragePath!,
-                          ),
+                          builder:
+                              (context) => StorageFilesScreen(
+                                initialPath: _currentStoragePath!,
+                              ),
                         ),
                       );
                     },
@@ -492,7 +491,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
     return ListView.separated(
       shrinkWrap: true,
       physics: NeverScrollableScrollPhysics(),
-      itemCount: _storageFiles.length > 10 ? 10 : _storageFiles.length, // Limit to 10 files
+      itemCount:
+          _storageFiles.length > 10
+              ? 10
+              : _storageFiles.length, // Limit to 10 files
       separatorBuilder: (context, index) => Divider(height: 1),
       itemBuilder: (context, index) {
         final file = _storageFiles[index];
@@ -512,17 +514,47 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 return Text('Loading...');
               }
 
-              final modified = DateFormat('MMM d, yyyy').format(snapshot.data!.modified);
-              final size = isDirectory ? 'Directory' : _formatFileSize(snapshot.data!.size);
+              final modified = DateFormat(
+                'MMM d, yyyy',
+              ).format(snapshot.data!.modified);
+              final size =
+                  isDirectory
+                      ? 'Directory'
+                      : _formatFileSize(snapshot.data!.size);
 
               return Text('$modified • $size');
             },
           ),
-          trailing: isDirectory
-              ? null
-              : IconButton(
-                  icon: Icon(Icons.open_in_new),
-                  onPressed: () async {
+          trailing:
+              isDirectory
+                  ? null
+                  : IconButton(
+                    icon: Icon(Icons.open_in_new),
+                    onPressed: () async {
+                      try {
+                        await OpenFile.open(file.path);
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error opening file: $e')),
+                        );
+                      }
+                    },
+                    tooltip: 'Open',
+                  ),
+          onTap:
+              isDirectory
+                  ? () async {
+                    // Navigate into the directory
+                    final dirPath = file.path;
+                    final dir = Directory(dirPath);
+                    final files = await dir.list().toList();
+
+                    setState(() {
+                      _currentStoragePath = dirPath;
+                      _storageFiles = files;
+                    });
+                  }
+                  : () async {
                     try {
                       await OpenFile.open(file.path);
                     } catch (e) {
@@ -531,29 +563,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
                       );
                     }
                   },
-                  tooltip: 'Open',
-                ),
-          onTap: isDirectory
-              ? () async {
-                  // Navigate into the directory
-                  final dirPath = file.path;
-                  final dir = Directory(dirPath);
-                  final files = await dir.list().toList();
-
-                  setState(() {
-                    _currentStoragePath = dirPath;
-                    _storageFiles = files;
-                  });
-                }
-              : () async {
-                  try {
-                    await OpenFile.open(file.path);
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error opening file: $e')),
-                    );
-                  }
-                },
         );
       },
     );
@@ -576,30 +585,31 @@ class _FileManagerPageState extends State<FileManagerPage> {
         final file = _storageFiles[index];
         final fileName = file.path.split(Platform.pathSeparator).last;
         final isDirectory = file is Directory;
-        
-        return GestureDetector(
-          onTap: isDirectory
-              ? () async {
-                  // Navigate into the directory
-                  final dirPath = file.path;
-                  final dir = Directory(dirPath);
-                  final files = await dir.list().toList();
 
-                  setState(() {
-                    _currentStoragePath = dirPath;
-                    _currentPath = dirPath;
-                    _storageFiles = files;
-                  });
-                }
-              : () async {
-                  try {
-                    await OpenFile.open(file.path);
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error opening file: $e')),
-                    );
+        return GestureDetector(
+          onTap:
+              isDirectory
+                  ? () async {
+                    // Navigate into the directory
+                    final dirPath = file.path;
+                    final dir = Directory(dirPath);
+                    final files = await dir.list().toList();
+
+                    setState(() {
+                      _currentStoragePath = dirPath;
+                      _currentPath = dirPath;
+                      _storageFiles = files;
+                    });
                   }
-                },
+                  : () async {
+                    try {
+                      await OpenFile.open(file.path);
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error opening file: $e')),
+                      );
+                    }
+                  },
           child: Container(
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
@@ -619,28 +629,39 @@ class _FileManagerPageState extends State<FileManagerPage> {
                   flex: 3,
                   child: Container(
                     padding: EdgeInsets.all(16),
-                    child: _isImageFile(file.path) && !isDirectory
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-                            child: Image.file(
-                              File(file.path),
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Icon(
-                                  _getFileIcon(file.path),
-                                  size: 48,
-                                  color: isDirectory ? Colors.amber[700] : Colors.blue[700],
-                                );
-                              },
+                    child:
+                        _isImageFile(file.path) && !isDirectory
+                            ? ClipRRect(
+                              borderRadius: BorderRadius.vertical(
+                                top: Radius.circular(12),
+                              ),
+                              child: Image.file(
+                                File(file.path),
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Icon(
+                                    _getFileIcon(file.path),
+                                    size: 48,
+                                    color:
+                                        isDirectory
+                                            ? Colors.amber[700]
+                                            : Colors.blue[700],
+                                  );
+                                },
+                              ),
+                            )
+                            : Center(
+                              child: Icon(
+                                isDirectory
+                                    ? Icons.folder
+                                    : _getFileIcon(file.path),
+                                size: 48,
+                                color:
+                                    isDirectory
+                                        ? Colors.amber[700]
+                                        : Colors.blue[700],
+                              ),
                             ),
-                          )
-                        : Center(
-                            child: Icon(
-                              isDirectory ? Icons.folder : _getFileIcon(file.path),
-                              size: 48,
-                              color: isDirectory ? Colors.amber[700] : Colors.blue[700],
-                            ),
-                          ),
                   ),
                 ),
                 Divider(height: 1, thickness: 1),
@@ -668,15 +689,24 @@ class _FileManagerPageState extends State<FileManagerPage> {
                             if (!snapshot.hasData) {
                               return Text(
                                 '...',
-                                style: TextStyle(fontSize: 11, color: Colors.grey),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey,
+                                ),
                               );
                             }
 
-                            final size = isDirectory ? 'Directory' : _formatFileSize(snapshot.data!.size);
+                            final size =
+                                isDirectory
+                                    ? 'Directory'
+                                    : _formatFileSize(snapshot.data!.size);
 
                             return Text(
                               size,
-                              style: TextStyle(fontSize: 11, color: Colors.grey),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey,
+                              ),
                               overflow: TextOverflow.ellipsis,
                             );
                           },
@@ -708,13 +738,19 @@ class _FileManagerPageState extends State<FileManagerPage> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          title,
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        // Make title flexible and handle overflow
+        Expanded(
+          child: Text(
+            title,
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            overflow: TextOverflow.ellipsis, // Handle long text
+          ),
         ),
+        // Wrap trailing widgets in a Row with overflow handling
         Row(
+          mainAxisSize: MainAxisSize.min, // Take minimum space
           children: [
-            if (trailing != null) trailing,
+            if (trailing != null) Flexible(child: trailing),
             IconButton(
               icon: Icon(
                 _expandedSections[sectionKey] ?? true
@@ -725,6 +761,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
               onPressed: () => _toggleSectionExpansion(sectionKey),
               tooltip:
                   _expandedSections[sectionKey] ?? true ? 'Collapse' : 'Expand',
+              constraints: BoxConstraints(), // Minimize button constraints
+              padding: EdgeInsets.zero, // Remove padding
             ),
           ],
         ),
@@ -737,7 +775,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     // Get connection status from service
     final connectionService = Provider.of<ConnectionService>(context);
     final bool isConnected = connectionService.isConnected;
-    
+
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.background,
       appBar: AppBar(
@@ -1043,23 +1081,24 @@ class _FileManagerPageState extends State<FileManagerPage> {
         child: const Icon(Icons.folder, color: Colors.white),
       ),
       // Optionally add a connection indicator in your UI
-      bottomNavigationBar: isConnected 
-          ? Container(
-              height: 24,
-              color: Colors.green.withOpacity(0.1),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.wifi, size: 14, color: Colors.green),
-                  SizedBox(width: 8),
-                  Text(
-                    'Connected to server',
-                    style: TextStyle(fontSize: 12, color: Colors.green),
-                  ),
-                ],
-              ),
-            )
-          : null,
+      bottomNavigationBar:
+          isConnected
+              ? Container(
+                height: 24,
+                color: Colors.green.withOpacity(0.1),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.wifi, size: 14, color: Colors.green),
+                    SizedBox(width: 8),
+                    Text(
+                      'Connected to server',
+                      style: TextStyle(fontSize: 12, color: Colors.green),
+                    ),
+                  ],
+                ),
+              )
+              : null,
     );
   }
 
@@ -1251,8 +1290,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
                               Icons.devices_other,
                               color: Colors.blue,
                             ),
-                            title: Text(device['name'] ?? 'Unknown Device',
-                                style: TextStyle(fontWeight: FontWeight.bold)),
+                            title: Text(
+                              device['name'] ?? 'Unknown Device',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
                             subtitle: Text('Device ID: ${device['id']}'),
                             trailing: ElevatedButton.icon(
                               icon: Icon(Icons.folder_open, size: 16),
