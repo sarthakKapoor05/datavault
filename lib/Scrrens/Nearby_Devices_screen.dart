@@ -125,6 +125,16 @@ class _ShareScreenState extends State<ShareScreen>
                   }
                 });
               }
+
+              // Add this to your WebSocket message listener in startScanning method
+              if (data['type'] == 'directory_listing_request') {
+                final path = data['path'] ?? '';
+                final requesterId = data['requesterId'];
+                
+                if (requesterId != null) {
+                  _handleDirectoryListingRequest(path, requesterId);
+                }
+              }
             }
             // Handle binary data (file content)
             else if (message is List<int> && _expectedFile != null) {
@@ -1033,6 +1043,66 @@ class _ShareScreenState extends State<ShareScreen>
       );
     }
   }
+
+  // Add this method to your _ShareScreenState class
+
+  Future<void> _handleDirectoryListingRequest(String requestedPath, String requesterId) async {
+  try {
+    final storagePath = await StorageManager.getDefaultStoragePath();
+    List<Map<String, dynamic>> files = [];
+    
+    // Sanitize requested path to prevent directory traversal attacks
+    final safePath = requestedPath.replaceAll('..', '').replaceAll('\\', '/');
+    
+    // Construct the full path to the requested directory
+    final fullPath = path.join(storagePath, safePath);
+    final directory = Directory(fullPath);
+    
+    if (await directory.exists()) {
+      final entities = await directory.list().toList();
+      
+      for (var entity in entities) {
+        try {
+          final stat = await entity.stat();
+          final name = path.basename(entity.path);
+          final isDir = entity is Directory;
+          
+          files.add({
+            'name': name,
+            'path': path.join(safePath, name).replaceAll('\\', '/'),
+            'isDirectory': isDir,
+            'size': isDir ? 0 : stat.size,
+            'modified': stat.modified.toIso8601String(),
+          });
+        } catch (e) {
+          print('Error processing file $entity: $e');
+        }
+      }
+    }
+    
+    // Send response back to server
+    if (_channel != null) {
+      _channel!.sink.add(jsonEncode({
+        "type": "file_list_response",
+        "path": safePath,
+        "files": files,
+        "requesterId": requesterId,
+      }));
+    }
+  } catch (e) {
+    print('Error handling directory listing request: $e');
+    // Send empty response on error
+    if (_channel != null) {
+      _channel!.sink.add(jsonEncode({
+        "type": "file_list_response",
+        "path": requestedPath,
+        "files": [],
+        "error": e.toString(),
+        "requesterId": requesterId,
+      }));
+    }
+  }
+}
 }
 
 // Use a secure key in production!
