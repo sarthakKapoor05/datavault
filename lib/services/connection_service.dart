@@ -30,6 +30,11 @@ class ConnectionService with ChangeNotifier {
   Map<String, Map<String, dynamic>> _deviceFiles = {}; // Store device file listings
   Map<String, Map<String, dynamic>> get deviceFiles => _deviceFiles; // Expose device files
 
+  // Add this method to track directory structure
+
+  // Store cached directory listings for quicker navigation
+  final Map<String, Map<String, List<Map<String, dynamic>>>> _cachedDirectories = {};
+
   WebSocketChannel? get channel => _channel;
   Stream<dynamic>? get broadcastStream => _broadcastStream;
   bool get isConnected => _isConnected;
@@ -453,13 +458,24 @@ class ConnectionService with ChangeNotifier {
   Future<List<Map<String, dynamic>>> requestDirectoryListing(
     String deviceId, 
     String path, 
-    {Function(List<Map<String, dynamic>>)? onSuccess, Function(String)? onError}
+    {bool recursive = false, 
+     Function(List<Map<String, dynamic>>)? onSuccess, Function(String)? onError}
   ) async {
     if (!isConnected || _channel == null) {
       if (onError != null) {
         onError('Not connected to server');
       }
       throw Exception('Not connected to server');
+    }
+
+    // Check the cache first
+    if (_cachedDirectories.containsKey(deviceId) && 
+        _cachedDirectories[deviceId]!.containsKey(path)) {
+      final cachedFiles = _cachedDirectories[deviceId]![path]!;
+      if (onSuccess != null) {
+        onSuccess(cachedFiles);
+      }
+      return cachedFiles;
     }
 
     try {
@@ -474,7 +490,8 @@ class ConnectionService with ChangeNotifier {
             final data = jsonDecode(message);
             if (data['type'] == 'file_list_response' && 
                 data['sourceId'] == deviceId &&
-                data['requesterId'] == _deviceId) {
+                data['requesterId'] == _deviceId &&
+                data['path'] == path) {
               
               // Cancel subscription
               subscription?.cancel();
@@ -483,6 +500,12 @@ class ConnectionService with ChangeNotifier {
               final files = List<Map<String, dynamic>>.from(
                 data['files']?.map((file) => Map<String, dynamic>.from(file)) ?? []
               );
+              
+              // Cache the result
+              if (!_cachedDirectories.containsKey(deviceId)) {
+                _cachedDirectories[deviceId] = {};
+              }
+              _cachedDirectories[deviceId]![path] = files;
               
               if (onSuccess != null) {
                 onSuccess(files);
@@ -505,6 +528,7 @@ class ConnectionService with ChangeNotifier {
         "targetId": deviceId,
         "path": path,
         "requesterId": _deviceId,
+        "recursive": recursive,
       }));
       
       // Set a timeout
@@ -525,6 +549,17 @@ class ConnectionService with ChangeNotifier {
         onError('Error: $e');
       }
       rethrow;
+    }
+  }
+
+  // Method to clear cached directories (e.g., when refreshing)
+  void clearDirectoryCache([String? deviceId, String? path]) {
+    if (deviceId == null) {
+      _cachedDirectories.clear();
+    } else if (path == null) {
+      _cachedDirectories.remove(deviceId);
+    } else if (_cachedDirectories.containsKey(deviceId)) {
+      _cachedDirectories[deviceId]?.remove(path);
     }
   }
 

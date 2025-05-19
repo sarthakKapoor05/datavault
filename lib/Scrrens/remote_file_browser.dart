@@ -13,12 +13,14 @@ class RemoteFileBrowserScreen extends StatefulWidget {
   final String deviceId;
   final String deviceName;
   final String initialPath;
+  final bool useTreeView;
 
   const RemoteFileBrowserScreen({
     Key? key,
     required this.deviceId,
     required this.deviceName,
     this.initialPath = '',
+    this.useTreeView = false,
   }) : super(key: key);
 
   @override
@@ -28,34 +30,26 @@ class RemoteFileBrowserScreen extends StatefulWidget {
 class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
   String _currentPath = '';
   List<Map<String, dynamic>> _files = [];
+  Map<String, Map<String, dynamic>> _fileTree = {};
+  Map<String, bool> _expandedFolders = {};
   bool _isLoading = true;
   String? _errorMessage;
   List<String> _pathHistory = [];
-  List<String> _breadcrumbs = [];
-
+  bool _useTreeView = false;
+  
   @override
   void initState() {
     super.initState();
     _currentPath = widget.initialPath;
-    _updateBreadcrumbs();
-    _loadFiles();
-  }
-
-  void _updateBreadcrumbs() {
-    if (_currentPath.isEmpty) {
-      setState(() {
-        _breadcrumbs = ['Root'];
-      });
-      return;
+    _useTreeView = widget.useTreeView;
+    if (_useTreeView) {
+      _loadCompleteFileTree();
+    } else {
+      _loadCurrentDirectory();
     }
-
-    final parts = _currentPath.split('/').where((part) => part.isNotEmpty).toList();
-    setState(() {
-      _breadcrumbs = ['Root', ...parts];
-    });
   }
 
-  Future<void> _loadFiles() async {
+  Future<void> _loadCompleteFileTree() async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -64,22 +58,71 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
     final connectionService = Provider.of<ConnectionService>(context, listen: false);
     
     try {
-      await connectionService.requestDirectoryListing(
+      final files = await connectionService.requestDirectoryListing(
+        widget.deviceId, 
+        '', // Root directory
+        recursive: true, // Request all files recursively
+      );
+      
+      setState(() {
+        _files = files;
+        _buildFileTree(files);
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Failed to load files: $e';
+        _isLoading = false;
+      });
+    }
+  }
+  
+  void _buildFileTree(List<Map<String, dynamic>> files) {
+    // Group files by parent directory
+    final tree = <String, List<Map<String, dynamic>>>{};
+    
+    for (final file in files) {
+      final parentPath = file['parentPath'] ?? '';
+      
+      if (!tree.containsKey(parentPath)) {
+        tree[parentPath] = [];
+      }
+      
+      tree[parentPath]!.add(file);
+    }
+    
+    setState(() {
+      _fileTree = Map.fromEntries(
+        tree.entries.map((entry) => 
+          MapEntry(entry.key, {'files': entry.value, 'expanded': false})
+        )
+      );
+      
+      // Expand root by default
+      if (_fileTree.containsKey('')) {
+        _fileTree['']!['expanded'] = true;
+      }
+    });
+  }
+  
+  Future<void> _loadCurrentDirectory() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    final connectionService = Provider.of<ConnectionService>(context, listen: false);
+    
+    try {
+      final files = await connectionService.requestDirectoryListing(
         widget.deviceId, 
         _currentPath,
-        onSuccess: (files) {
-          setState(() {
-            _files = files;
-            _isLoading = false;
-          });
-        },
-        onError: (error) {
-          setState(() {
-            _errorMessage = error;
-            _isLoading = false;
-          });
-        },
       );
+      
+      setState(() {
+        _files = files;
+        _isLoading = false;
+      });
     } catch (e) {
       setState(() {
         _errorMessage = 'Failed to load files: $e';
@@ -89,44 +132,20 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
   }
 
   void _navigateToDirectory(String dirName) {
-    // Save current path to history for back navigation
-    _pathHistory.add(_currentPath);
-    
-    // Navigate to new path
-    final newPath = _currentPath.isEmpty 
-        ? dirName 
-        : '$_currentPath/$dirName';
-    
-    setState(() {
-      _currentPath = newPath;
-    });
-    
-    _updateBreadcrumbs();
-    _loadFiles();
-  }
-  
-  void _navigateToBreadcrumb(int index) {
-    if (index == 0) {
-      // Root directory
-      _pathHistory.add(_currentPath);
+    if (_useTreeView) {
+      // In tree view, we just toggle folder expansion
       setState(() {
-        _currentPath = '';
+        final path = _currentPath.isEmpty ? dirName : '$_currentPath/$dirName';
+        _expandedFolders[path] = !(_expandedFolders[path] ?? false);
       });
-      _updateBreadcrumbs();
-      _loadFiles();
-      return;
-    }
-    
-    // Construct path up to the selected breadcrumb
-    final parts = _currentPath.split('/').where((part) => part.isNotEmpty).toList();
-    if (index - 1 < parts.length) {
+    } else {
+      // Standard navigation 
       _pathHistory.add(_currentPath);
-      final newPath = parts.sublist(0, index).join('/');
+      final newPath = _currentPath.isEmpty ? dirName : '$_currentPath/$dirName';
       setState(() {
         _currentPath = newPath;
       });
-      _updateBreadcrumbs();
-      _loadFiles();
+      _loadCurrentDirectory();
     }
   }
   
@@ -140,8 +159,19 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
     setState(() {
       _currentPath = previousPath;
     });
-    _updateBreadcrumbs();
-    _loadFiles();
+    _loadCurrentDirectory();
+  }
+
+  void _toggleViewMode() {
+    setState(() {
+      _useTreeView = !_useTreeView;
+    });
+    
+    if (_useTreeView) {
+      _loadCompleteFileTree();
+    } else {
+      _loadCurrentDirectory();
+    }
   }
 
   void _downloadFile(Map<String, dynamic> file) {
@@ -150,9 +180,7 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
       listen: false,
     );
 
-    final filePath = _currentPath.isEmpty 
-        ? file['name'] 
-        : '$_currentPath/${file['name']}';
+    final filePath = file['path'];
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Requesting file ${file['name']}...')),
@@ -193,147 +221,278 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
         ),
         actions: [
           IconButton(
+            icon: Icon(_useTreeView ? Icons.list : Icons.account_tree),
+            tooltip: _useTreeView ? 'List View' : 'Tree View',
+            onPressed: _toggleViewMode,
+          ),
+          IconButton(
             icon: Icon(Icons.refresh),
-            onPressed: _loadFiles,
+            onPressed: _useTreeView ? _loadCompleteFileTree : _loadCurrentDirectory,
             tooltip: 'Refresh',
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // Breadcrumb navigation
-          Container(
-            height: 48,
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                for (int i = 0; i < _breadcrumbs.length; i++)
-                  Row(
-                    children: [
-                      InkWell(
-                        onTap: () => _navigateToBreadcrumb(i),
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                          child: Text(
-                            _breadcrumbs[i],
-                            style: TextStyle(
-                              color: i == _breadcrumbs.length - 1
-                                  ? Theme.of(context).primaryColor
-                                  : Colors.blue,
-                              fontWeight: i == _breadcrumbs.length - 1
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (i < _breadcrumbs.length - 1)
-                        Icon(Icons.chevron_right, size: 16),
-                    ],
-                  ),
-              ],
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator())
+          : _errorMessage != null
+              ? _buildErrorWidget()
+              : _useTreeView
+                  ? _buildTreeView()
+                  : _buildListView(),
+    );
+  }
+  
+  Widget _buildErrorWidget() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: Colors.red),
+            SizedBox(height: 16),
+            Text(
+              _errorMessage!,
+              textAlign: TextAlign.center,
             ),
-          ),
-          
-          Divider(height: 1),
-          
-          // File listing
-          Expanded(
-            child: _isLoading
-                ? Center(child: CircularProgressIndicator())
-                : _errorMessage != null
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.error_outline, size: 48, color: Colors.red),
-                              SizedBox(height: 16),
-                              Text(
-                                _errorMessage!,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: Colors.red),
-                              ),
-                              SizedBox(height: 16),
-                              ElevatedButton(
-                                onPressed: _loadFiles,
-                                child: Text('Retry'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    : _files.isEmpty
-                        ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.folder_off, size: 48, color: Colors.grey),
-                                  SizedBox(height: 16),
-                                  Text('No files found in this location'),
-                                ],
-                              ),
-                            ),
-                          )
-                        : _buildFilesList(),
-          ),
-        ],
+            SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: _useTreeView ? _loadCompleteFileTree : _loadCurrentDirectory,
+              child: Text('Retry'),
+            ),
+          ],
+        ),
       ),
     );
   }
   
-  Widget _buildFilesList() {
-    // Sort files: directories first, then alphabetically
-    final sortedFiles = List<Map<String, dynamic>>.from(_files);
-    sortedFiles.sort((a, b) {
-      final aIsDir = a['isDirectory'] == true;
-      final bIsDir = b['isDirectory'] == true;
-      if (aIsDir && !bIsDir) return -1;
-      if (!aIsDir && bIsDir) return 1;
-      return (a['name'] ?? '').toString().compareTo((b['name'] ?? '').toString());
-    });
+  Widget _buildListView() {
+    if (_files.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.folder_off, size: 64, color: Colors.grey[400]),
+            SizedBox(height: 16),
+            Text(
+              'This folder is empty',
+              style: TextStyle(fontSize: 16),
+            ),
+          ],
+        ),
+      );
+    }
 
-    return ListView.separated(
-      itemCount: sortedFiles.length,
-      separatorBuilder: (context, index) => Divider(height: 1),
-      itemBuilder: (context, index) {
-        final file = sortedFiles[index];
-        final isDir = file['isDirectory'] == true;
-        final fileName = file['name'] ?? 'Unknown';
+    // Build breadcrumb navigation
+    final List<Widget> breadcrumbs = [
+      InkWell(
+        onTap: () {
+          if (_currentPath.isNotEmpty) {
+            _pathHistory.add(_currentPath);
+            setState(() {
+              _currentPath = '';
+            });
+            _loadCurrentDirectory();
+          }
+        },
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          child: Text(
+            'Root',
+            style: TextStyle(
+              color: _currentPath.isEmpty ? Theme.of(context).primaryColor : Colors.blue,
+              fontWeight: _currentPath.isEmpty ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ),
+      ),
+    ];
+
+    if (_currentPath.isNotEmpty) {
+      final parts = _currentPath.split('/');
+      String currentPath = '';
+      
+      for (int i = 0; i < parts.length; i++) {
+        final part = parts[i];
+        currentPath = currentPath.isEmpty ? part : '$currentPath/$part';
+        final localPath = currentPath; // Capture for closure
         
-        return ListTile(
-          leading: Icon(
-            isDir ? Icons.folder : _getFileIcon(fileName),
-            color: isDir ? Colors.amber : Colors.blue,
-          ),
-          title: Text(
-            fileName,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          subtitle: Text(
-            isDir 
-                ? 'Directory' 
-                : '${_formatFileSize(file['size'] ?? 0)} • ${_formatDate(file['modified'])}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          trailing: isDir
-              ? Icon(Icons.chevron_right)
-              : IconButton(
-                  icon: Icon(Icons.download),
-                  tooltip: 'Download',
-                  onPressed: () => _downloadFile(file),
-                ),
-          onTap: isDir
-              ? () => _navigateToDirectory(fileName)
-              : () => _downloadFile(file),
+        breadcrumbs.add(
+          Icon(Icons.chevron_right, size: 16, color: Colors.grey),
         );
+        
+        breadcrumbs.add(
+          InkWell(
+            onTap: () {
+              if (currentPath != _currentPath) {
+                _pathHistory.add(_currentPath);
+                setState(() {
+                  _currentPath = localPath;
+                });
+                _loadCurrentDirectory();
+              }
+            },
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+              child: Text(
+                part,
+                style: TextStyle(
+                  color: currentPath == _currentPath 
+                      ? Theme.of(context).primaryColor 
+                      : Colors.blue,
+                  fontWeight: currentPath == _currentPath 
+                      ? FontWeight.bold 
+                      : FontWeight.normal,
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
+    return Column(
+      children: [
+        // Breadcrumb navigation bar
+        Container(
+          height: 48,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Row(children: breadcrumbs),
+          ),
+        ),
+        
+        Divider(height: 1),
+        
+        // File listing
+        Expanded(
+          child: ListView.separated(
+            itemCount: _files.length,
+            separatorBuilder: (context, index) => Divider(height: 1),
+            itemBuilder: (context, index) {
+              final file = _files[index];
+              final isDir = file['isDirectory'] == true;
+              final fileName = file['name'] ?? 'Unknown';
+              
+              return ListTile(
+                leading: Icon(
+                  isDir ? Icons.folder : _getFileIcon(fileName),
+                  color: isDir ? Colors.amber : Colors.blue,
+                ),
+                title: Text(
+                  fileName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(
+                  isDir 
+                      ? 'Directory' 
+                      : '${_formatFileSize(file['size'] ?? 0)} • ${_formatDate(file['modified'])}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: isDir
+                    ? Icon(Icons.chevron_right)
+                    : IconButton(
+                        icon: Icon(Icons.download),
+                        tooltip: 'Download',
+                        onPressed: () => _downloadFile(file),
+                      ),
+                onTap: isDir
+                    ? () => _navigateToDirectory(fileName)
+                    : () => _downloadFile(file),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildTreeView() {
+    return ListView.builder(
+      padding: EdgeInsets.all(8),
+      itemCount: _fileTree.containsKey('') ? _fileTree['']!['files'].length : 0,
+      itemBuilder: (context, index) {
+        final files = (_fileTree['']!['files'] as List<Map<String, dynamic>>);
+        return _buildFileTreeItem(files[index], 0);
       },
+    );
+  }
+  
+  Widget _buildFileTreeItem(Map<String, dynamic> item, int depth) {
+    final isDir = item['isDirectory'] == true;
+    final path = item['path'] as String;
+    final name = item['name'] as String;
+    final expanded = _expandedFolders[path] ?? false;
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: isDir 
+              ? () {
+                  setState(() {
+                    _expandedFolders[path] = !expanded;
+                  });
+                }
+              : () => _downloadFile(item),
+          child: Padding(
+            padding: EdgeInsets.only(left: depth * 24.0, top: 8, bottom: 8),
+            child: Row(
+              children: [
+                Icon(
+                  isDir 
+                      ? (expanded ? Icons.folder_open : Icons.folder) 
+                      : _getFileIcon(name),
+                  color: isDir ? Colors.amber : Colors.blue,
+                  size: 22,
+                ),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: isDir ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                      if (!isDir)
+                        Text(
+                          _formatFileSize(item['size'] ?? 0),
+                          style: TextStyle(
+                            fontSize: 12, 
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (!isDir)
+                  IconButton(
+                    icon: Icon(Icons.download, size: 20),
+                    onPressed: () => _downloadFile(item),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        
+        // Show children if this is an expanded directory
+        if (isDir && expanded && _fileTree.containsKey(path))
+          ..._buildChildrenItems(path, depth + 1),
+      ],
+    );
+  }
+  
+  List<Widget> _buildChildrenItems(String parentPath, int depth) {
+    final children = _fileTree[parentPath]?['files'] ?? [];
+    return List<Widget>.from(
+      children.map((child) => _buildFileTreeItem(child, depth))
     );
   }
 
