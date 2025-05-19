@@ -13,6 +13,7 @@ import 'package:encrypt/encrypt.dart' as encrypt;
 import 'dart:typed_data';
 import 'package:datavault/services/connection_service.dart';
 import 'package:provider/provider.dart';
+import 'package:path/path.dart' as path;
 
 enum FileTransferMode { idle, sending, receiving }
 
@@ -88,6 +89,40 @@ class _ShareScreenState extends State<ShareScreen>
                     content: Text('Receiving file: ${data['filename']}'),
                   ),
                 );
+              }
+
+              // Add this to the _broadcastStream!.listen() handler in startScanning() method
+              if (data['type'] == 'request_initial_file_list') {
+                _sendInitialFileList();
+              }
+
+              // Also handle incoming device file updates
+              if (data['type'] == 'device_files_update') {
+                final deviceId = data['deviceId'];
+                final deviceName = data['deviceName'];
+                final files = data['files'];
+                
+                // Store the files for display
+                setState(() {
+                  // Find the device in connected clients or add it
+                  bool found = false;
+                  for (int i = 0; i < _connectedClients.length; i++) {
+                    if (_connectedClients[i]['id'] == deviceId) {
+                      _connectedClients[i]['files'] = files;
+                      found = true;
+                      break;
+                    }
+                  }
+                  
+                  // If device wasn't in the list yet, this ensures we have its files
+                  if (!found && deviceId != null && deviceName != null) {
+                    _connectedClients.add({
+                      'id': deviceId,
+                      'name': deviceName,
+                      'files': files
+                    });
+                  }
+                });
               }
             }
             // Handle binary data (file content)
@@ -181,18 +216,30 @@ class _ShareScreenState extends State<ShareScreen>
       final senderId = _expectedFile?['fromId'] ?? 'unknown_sender';
       final fileName = _expectedFile?['filename'] ?? 'file.bin';
 
-      // Use the default storage location from StorageManager
+      // Find client name from the connected clients list using the sender ID
+      String senderName = 'Unknown Device';
+      for (var client in _connectedClients) {
+        if (client['id'] == senderId) {
+          senderName = client['name'] ?? 'Unknown Device';
+          break;
+        }
+      }
+      
+      // Use sanitized sender name as subfolder
+      String safeSenderName = senderName.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+      
+      // Use the default storage location from StorageManager with sender name instead of ID
       final decryptedBytes = decryptFileBytes(fileData);
       final file = await StorageManager.saveToDefaultStorage(
         fileName,
         Uint8List.fromList(decryptedBytes),
-        subfolder: senderId,
+        subfolder: safeSenderName, // Use sender name instead of ID
       );
 
       // Show success notification
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('File received: $fileName'),
+          content: Text('File received from $senderName: $fileName'),
           action: SnackBarAction(
             label: 'Open',
             onPressed: () async {
@@ -510,6 +557,100 @@ class _ShareScreenState extends State<ShareScreen>
                   ],
                 ),
               ),
+            // Display files from connected clients
+            if (_connectedClients.isNotEmpty) ...{
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Shared Files',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF50C2C9),
+                      ),
+                    ),
+                    SizedBox(height: 16),
+                    ...List.generate(
+                      _connectedClients.length,
+                      (index) {
+                        final client = _connectedClients[index];
+                        
+                        // Skip our own device
+                        if (_deviceId != null && client['id'] == _deviceId) {
+                          return SizedBox.shrink();
+                        }
+                        
+                        // Get files from this client
+                        final deviceName = client['name'] ?? 'Unknown Device';
+                        final files = List<Map<String, dynamic>>.from(client['files'] ?? []);
+                        
+                        if (files.isEmpty) {
+                          return SizedBox.shrink();
+                        }
+                        
+                        return Card(
+                          margin: EdgeInsets.only(bottom: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Text(
+                                  'Files from $deviceName',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                height: 200,
+                                child: ListView.builder(
+                                  padding: EdgeInsets.all(8),
+                                  itemCount: files.length > 5 ? 5 : files.length,
+                                  itemBuilder: (context, i) {
+                                    final file = files[i];
+                                    final isDir = file['isDirectory'] ?? false;
+                                    
+                                    return ListTile(
+                                      leading: Icon(
+                                        isDir ? Icons.folder : _getFileIcon(file['name']),
+                                        color: isDir ? Colors.amber : Colors.blue,
+                                      ),
+                                      title: Text(file['name']),
+                                      subtitle: Text(
+                                        isDir ? 'Directory' : 
+                                             '${_formatFileSize(file['size'] ?? 0)}'
+                                      ),
+                                      trailing: ElevatedButton(
+                                        child: Text(isDir ? 'Browse' : 'Get File'),
+                                        onPressed: () {
+                                          // Request file transfer
+                                          if (!isDir) {
+                                            _requestFileFromDevice(
+                                              client['id'], 
+                                              file['path']
+                                            );
+                                          }
+                                          // Or navigate to directory
+                                        },
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            },
             // Recent devices section
             Expanded(
               child: Column(
@@ -768,6 +909,94 @@ class _ShareScreenState extends State<ShareScreen>
         ],
       ),
     );
+  }
+
+  // New method to send file list from storage
+  Future<void> _sendInitialFileList() async {
+    try {
+      final storagePath = await StorageManager.getDefaultStoragePath();
+      final directory = Directory(storagePath);
+      List<Map<String, dynamic>> files = [];
+      
+      if (await directory.exists()) {
+        final entities = await directory.list().toList();
+        
+        for (var entity in entities) {
+          try {
+            final stat = await entity.stat();
+            final name = path.basename(entity.path);
+            final isDir = entity is Directory;
+            
+            files.add({
+              'name': name,
+              'path': name,
+              'isDirectory': isDir,
+              'size': isDir ? 0 : stat.size,
+              'modified': stat.modified.toIso8601String(),
+            });
+          } catch (e) {
+            print('Error processing file $entity: $e');
+          }
+        }
+      }
+      
+      // Send the file list to the server
+      if (_channel != null) {
+        print('Sending initial file list: ${files.length} items');
+        _channel!.sink.add(jsonEncode({
+          "type": "initial_file_list_response",
+          "files": files
+        }));
+      }
+    } catch (e) {
+      print('Error sending initial file list: $e');
+    }
+  }
+
+  // Add file icon helper
+  IconData _getFileIcon(String path) {
+    final ext = path.split('.').last.toLowerCase();
+
+    if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(ext)) {
+      return Icons.image;
+    } else if (['mp4', 'avi', 'mov', 'wmv', 'flv', 'mkv'].contains(ext)) {
+      return Icons.video_file;
+    } else if (['mp3', 'wav', 'ogg', 'flac', 'm4a'].contains(ext)) {
+      return Icons.audio_file;
+    } else if (['pdf'].contains(ext)) {
+      return Icons.picture_as_pdf;
+    } else if (['doc', 'docx', 'txt', 'rtf'].contains(ext)) {
+      return Icons.description;
+    } else if (['xls', 'xlsx', 'csv'].contains(ext)) {
+      return Icons.table_chart;
+    } else if (['zip', 'rar', '7z', 'tar', 'gz'].contains(ext)) {
+      return Icons.folder_zip;
+    } else {
+      return Icons.insert_drive_file;
+    }
+  }
+
+  // Add file size formatter
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+
+  // Add method to request file from another device
+  void _requestFileFromDevice(String deviceId, String filePath) {
+    if (_channel != null) {
+      _channel!.sink.add(jsonEncode({
+        "type": "request_file",
+        "targetId": deviceId,
+        "filename": filePath
+      }));
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Requesting file...'))
+      );
+    }
   }
 }
 
