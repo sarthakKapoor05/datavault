@@ -448,6 +448,86 @@ class ConnectionService with ChangeNotifier {
     }
   }
 
+  // Add this method to your ConnectionService class
+
+  Future<List<Map<String, dynamic>>> requestDirectoryListing(
+    String deviceId, 
+    String path, 
+    {Function(List<Map<String, dynamic>>)? onSuccess, Function(String)? onError}
+  ) async {
+    if (!isConnected || _channel == null) {
+      if (onError != null) {
+        onError('Not connected to server');
+      }
+      throw Exception('Not connected to server');
+    }
+
+    try {
+      print('Requesting directory listing from $deviceId for path: $path');
+      
+      final completer = Completer<List<Map<String, dynamic>>>();
+      StreamSubscription? subscription;
+      
+      subscription = _broadcastStream?.listen((message) {
+        if (message is String) {
+          try {
+            final data = jsonDecode(message);
+            if (data['type'] == 'file_list_response' && 
+                data['sourceId'] == deviceId &&
+                data['requesterId'] == _deviceId) {
+              
+              // Cancel subscription
+              subscription?.cancel();
+              
+              // Parse the files
+              final files = List<Map<String, dynamic>>.from(
+                data['files']?.map((file) => Map<String, dynamic>.from(file)) ?? []
+              );
+              
+              if (onSuccess != null) {
+                onSuccess(files);
+              }
+              
+              completer.complete(files);
+            }
+          } catch (e) {
+            print('Error parsing directory listing: $e');
+            if (!completer.isCompleted) {
+              completer.completeError('Failed to parse response');
+            }
+          }
+        }
+      });
+      
+      // Send the request
+      _channel!.sink.add(jsonEncode({
+        "type": "request_directory_listing",
+        "targetId": deviceId,
+        "path": path,
+        "requesterId": _deviceId,
+      }));
+      
+      // Set a timeout
+      Timer(Duration(seconds: 10), () {
+        if (!completer.isCompleted) {
+          subscription?.cancel();
+          if (onError != null) {
+            onError('Request timed out');
+          }
+          completer.completeError('Request timed out');
+        }
+      });
+      
+      return completer.future;
+    } catch (e) {
+      print('Error requesting directory listing: $e');
+      if (onError != null) {
+        onError('Error: $e');
+      }
+      rethrow;
+    }
+  }
+
   @override
   void dispose() {
     disconnect();
