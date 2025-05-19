@@ -319,6 +319,8 @@ class ConnectionService with ChangeNotifier {
     };
   }
 
+  // Replace the _sendInitialFileList method with this enhanced version
+
   Future<void> _sendInitialFileList() async {
     try {
       final storagePath = await StorageManager.getDefaultStoragePath();
@@ -326,24 +328,11 @@ class ConnectionService with ChangeNotifier {
       List<Map<String, dynamic>> files = [];
       
       if (await directory.exists()) {
-        final entities = await directory.list().toList();
-        
-        for (var entity in entities) {
-          final stat = await entity.stat();
-          final name = path.basename(entity.path);
-          final isDir = entity is Directory;
-          
-          files.add({
-            'name': name,
-            'path': name,
-            'isDirectory': isDir,
-            'size': isDir ? 0 : stat.size,
-            'modified': stat.modified.toIso8601String(),
-          });
-        }
+        await _collectFilesRecursively(directory, files, storagePath);
       }
       
       if (_channel != null) {
+        print('Sending initial file list with ${files.length} items');
         _channel!.sink.add(jsonEncode({
           "type": "initial_file_list_response",
           "files": files,
@@ -351,6 +340,53 @@ class ConnectionService with ChangeNotifier {
       }
     } catch (e) {
       print('Error sending initial file list: $e');
+    }
+  }
+
+  // Add this helper method to scan folders recursively
+  Future<void> _collectFilesRecursively(
+    Directory directory, 
+    List<Map<String, dynamic>> files,
+    String basePath,
+    [String relativePath = '']
+  ) async {
+    if (!await directory.exists()) return;
+    
+    try {
+      final entities = await directory.list().toList();
+      
+      for (var entity in entities) {
+        try {
+          final stat = await entity.stat();
+          final name = path.basename(entity.path);
+          final isDir = entity is Directory;
+          
+          // Calculate path relative to storage root
+          final filePath = relativePath.isEmpty ? name : '$relativePath/$name';
+          
+          files.add({
+            'name': name,
+            'path': filePath,
+            'isDirectory': isDir,
+            'size': isDir ? 0 : stat.size,
+            'modified': stat.modified.toIso8601String(),
+          });
+          
+          // Recursively process subdirectories
+          if (isDir) {
+            await _collectFilesRecursively(
+              Directory(entity.path),
+              files,
+              basePath,
+              filePath,
+            );
+          }
+        } catch (e) {
+          print('Error processing file $entity during scan: $e');
+        }
+      }
+    } catch (e) {
+      print('Error listing directory $directory: $e');
     }
   }
 
