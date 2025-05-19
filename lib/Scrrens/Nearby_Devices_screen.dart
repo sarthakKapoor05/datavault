@@ -707,12 +707,14 @@ class _ShareScreenState extends State<ShareScreen>
             
             // Your scanning animation
             Container(
-              height: 200,
+              height: 120, // Reduced height from 200
+              padding: EdgeInsets.symmetric(vertical: 10), // Add padding
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  ...List.generate(4, (index) {
-                    double radius = (index + 1) * 40;
+                  // Reduce the number of circles to 3 instead of 4
+                  ...List.generate(3, (index) {
+                    double radius = (index + 1) * 30; // Smaller radius values
                     return AnimatedBuilder(
                       animation: _controller,
                       builder: (context, child) {
@@ -734,22 +736,46 @@ class _ShareScreenState extends State<ShareScreen>
                       },
                     );
                   }),
+                  // Make a more compact connection button
                   GestureDetector(
                     onTap: () {
                       print('button pressed');
                       startScanning();
                     },
                     child: Container(
-                      width: 60,
-                      height: 60,
+                      width: 50, // Reduced from 60
+                      height: 50, // Reduced from 60
                       decoration: BoxDecoration(
                         color: _isConnected ? Colors.green : Color(0xFF50C2C9),
                         shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 4,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
                       ),
-                      child: Icon(
-                        _isConnected ? Icons.wifi : Icons.sync,
-                        color: Colors.white,
-                        size: 30,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            _isConnected ? Icons.wifi : Icons.sync,
+                            color: Colors.white,
+                            size: 24, // Reduced from 30
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Add status text below the button
+                  Positioned(
+                    bottom: 0,
+                    child: Text(
+                      _isConnected ? 'Connected' : 'Tap to connect',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: _isConnected ? Colors.green : Colors.grey[600],
                       ),
                     ),
                   ),
@@ -830,7 +856,7 @@ class _ShareScreenState extends State<ShareScreen>
 
     return Container(
       width: 330,
-      height: 260,
+      height: 200, // Reduced height since we'll have fewer buttons
       margin: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
@@ -846,16 +872,11 @@ class _ShareScreenState extends State<ShareScreen>
           Icon(
             _transferMode == FileTransferMode.sending
                 ? Icons.upload
-                : _transferMode == FileTransferMode.receiving
-                ? Icons.download
                 : Icons.devices,
             size: 30,
-            color:
-                _transferMode == FileTransferMode.sending
-                    ? Colors.amber
-                    : _transferMode == FileTransferMode.receiving
-                    ? Colors.green
-                    : Colors.white,
+            color: _transferMode == FileTransferMode.sending
+                ? Colors.amber
+                : Colors.white,
           ),
           const SizedBox(height: 8),
           Text(
@@ -873,42 +894,23 @@ class _ShareScreenState extends State<ShareScreen>
             overflow: TextOverflow.ellipsis,
             style: TextStyle(color: Theme.of(context).colorScheme.secondary),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 16),
 
           // Show different buttons based on the transfer mode
           if (_transferMode == FileTransferMode.idle) ...[
-            // Mode selection buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ElevatedButton.icon(
-                  icon: Icon(Icons.upload, size: 16),
-                  label: Text('Send', style: TextStyle(fontSize: 12)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.amber,
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _transferMode = FileTransferMode.sending;
-                    });
-                  },
-                ),
-                SizedBox(width: 10),
-                ElevatedButton.icon(
-                  icon: Icon(Icons.download, size: 16),
-                  label: Text('Receive', style: TextStyle(fontSize: 12)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _transferMode = FileTransferMode.receiving;
-                    });
-                  },
-                ),
-              ],
+            // Only show Send button, removed Receive
+            ElevatedButton.icon(
+              icon: Icon(Icons.upload, size: 16),
+              label: Text('Send Files', style: TextStyle(fontSize: 14)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber,
+                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+              ),
+              onPressed: () {
+                setState(() {
+                  _transferMode = FileTransferMode.sending;
+                });
+              },
             ),
           ],
 
@@ -928,29 +930,6 @@ class _ShareScreenState extends State<ShareScreen>
               style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
               onPressed: () => sendFileToClient(device['id']),
             ),
-            SizedBox(height: 8),
-            TextButton.icon(
-              icon: Icon(Icons.cancel),
-              label: Text('Cancel'),
-              onPressed: () {
-                setState(() {
-                  _transferMode = FileTransferMode.idle;
-                });
-              },
-            ),
-          ],
-
-          // Receive mode UI
-          if (_transferMode == FileTransferMode.receiving) ...[
-            Text(
-              'Ready to receive files',
-              style: TextStyle(
-                color: Colors.green,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: 8),
-            Icon(Icons.download_done, size: 32, color: Colors.green),
             SizedBox(height: 8),
             TextButton.icon(
               icon: Icon(Icons.cancel),
