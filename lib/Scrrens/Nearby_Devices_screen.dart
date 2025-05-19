@@ -42,7 +42,11 @@ class _ShareScreenState extends State<ShareScreen>
         context,
         listen: false,
       );
+<<<<<<< HEAD
       await connectionService.connect('192.168.0.196');
+=======
+      await connectionService.connect('192.168.226.140');
+>>>>>>> 93a35c3d88943fc90f1a81ce3a652de2c8984d36
 
       setState(() {
         _isConnected = connectionService.isConnected;
@@ -139,6 +143,12 @@ class _ShareScreenState extends State<ShareScreen>
                 if (requesterId != null) {
                   _handleDirectoryListingRequest(path, requesterId, recursive);
                 }
+              }
+
+              // Add file transfer completion handler
+              if (data['type'] == 'file_transfer_complete') {
+                // Refresh file lists when the server tells us a file transfer completed
+                _refreshAllFileLists();
               }
             }
             // Handle binary data (file content)
@@ -253,7 +263,6 @@ class _ShareScreenState extends State<ShareScreen>
       final file = await StorageManager.saveToDefaultStorage(
         fileName,
         Uint8List.fromList(decryptedBytes),
-        // subfolder: safeSenderName, // Use sender name instead of ID
       );
 
       // Show success notification
@@ -272,14 +281,18 @@ class _ShareScreenState extends State<ShareScreen>
       // Clear the expected file metadata
       setState(() {
         _expectedFile = null;
-        // Reset transfer mode after a delay
-        Future.delayed(Duration(seconds: 2), () {
-          if (mounted) {
-            setState(() {
-              _transferMode = FileTransferMode.idle;
-            });
-          }
-        });
+      });
+      
+      // Request updated file list from all connected devices
+      _refreshAllFileLists();
+
+      // Reset transfer mode after a delay
+      Future.delayed(Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() {
+            _transferMode = FileTransferMode.idle;
+          });
+        }
       });
     } catch (e) {
       print('Error saving received file: $e');
@@ -295,6 +308,14 @@ class _ShareScreenState extends State<ShareScreen>
 
   // Add this method to send a file to another client
   Future<void> sendFileToClient(String targetId) async {
+    // Don't allow sending files to our own device
+    if (_deviceId != null && targetId == _deviceId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Cannot send files to your own device')),
+      );
+      return;
+    }
+    
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       allowMultiple: true, // Allow multiple file selection
     );
@@ -353,7 +374,7 @@ class _ShareScreenState extends State<ShareScreen>
         final data = jsonDecode(message);
         if (data['type'] == 'ready_for_file') {
           // Send the actual encrypted file data
-          _channel!.sink.add(encryptedBytes); // <--- FIXED
+          _channel!.sink.add(encryptedBytes);
 
           Future.delayed(Duration(milliseconds: 500), () {
             if (!sendCompleter.isCompleted) {
@@ -374,6 +395,9 @@ class _ShareScreenState extends State<ShareScreen>
     });
 
     await sendCompleter.future;
+    
+    // After file is sent, refresh the file lists
+    _refreshAllFileLists();
   }
 
   // Start ping timer to keep connection alive and detect disconnection
@@ -480,10 +504,11 @@ class _ShareScreenState extends State<ShareScreen>
                 ),
               ),
 
-            const Padding(
-              padding: EdgeInsets.all(16.0),
+            // Always show the Shared Files section - move it above the device scanning animation
+            Padding(
+              padding: const EdgeInsets.all(16.0),
               child: Text(
-                'Nearby Devices',
+                'Shared Files',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
@@ -491,150 +516,94 @@ class _ShareScreenState extends State<ShareScreen>
                 ),
               ),
             ),
-            Expanded(
-              flex: 2,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  ...List.generate(4, (index) {
-                    double radius = (index + 1) * 50;
-                    return AnimatedBuilder(
-                      animation: _controller,
-                      builder: (context, child) {
-                        double scale =
-                            1.0 +
-                            sin((_controller.value * 2 * pi) + index) * 0.05;
-                        return Transform.scale(
-                          scale: scale,
-                          child: Container(
-                            width: radius * 2,
-                            height: radius * 2,
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.secondary.withOpacity(0.3),
-                                width: 1.5,
-                              ),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
+            
+            // Show shared files from all clients in a scrollable container
+            _isConnected && _connectedClients.isNotEmpty 
+                ? Expanded(
+                    child: ListView.builder(
+                      itemCount: _connectedClients.length,
+                      itemBuilder: (context, index) {
+                        final client = _connectedClients[index];
+                        
+                        // Skip our own device
+                        if (_deviceId != null && client['id'] == _deviceId) {
+                          return SizedBox.shrink();
+                        }
+                        
+                        // Get files from this client
+                        final deviceName = client['name'] ?? 'Unknown Device';
+                        final files = List<Map<String, dynamic>>.from(
+                          client['files'] ?? [],
                         );
-                      },
-                    );
-                  }),
-                  GestureDetector(
-                    onTap: () {
-                      print('button pressed');
-                      startScanning();
-                    },
-                    child: Container(
-                      width: 60,
-                      height: 60,
-                      decoration: BoxDecoration(
-                        color: _isConnected ? Colors.green : Color(0xFF50C2C9),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        _isConnected ? Icons.wifi : Icons.sync,
-                        color: Colors.white,
-                        size: 30,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Display connected clients section
-            if (_connectedClients.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        'Connected Clients',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF50C2C9),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: 260, // Set this to the height of your device card
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _connectedClients.length,
-                        itemBuilder: (context, index) {
-                          return _connectedDeviceCard(_connectedClients[index]);
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            // Display files from connected clients
-            if (_connectedClients.isNotEmpty) ...{
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Shared Files',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF50C2C9),
-                      ),
-                    ),
-                    SizedBox(height: 16),
-                    ...List.generate(_connectedClients.length, (index) {
-                      final client = _connectedClients[index];
-
-                      // Skip our own device
-                      if (_deviceId != null && client['id'] == _deviceId) {
-                        return SizedBox.shrink();
-                      }
-
-                      // Get files from this client
-                      final deviceName = client['name'] ?? 'Unknown Device';
-                      final files = List<Map<String, dynamic>>.from(
-                        client['files'] ?? [],
-                      );
-
-                      if (files.isEmpty) {
-                        return SizedBox.shrink();
-                      }
-
-                      return Card(
-                        margin: EdgeInsets.only(bottom: 16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
+                        
+                        if (files.isEmpty) {
+                          return Card(
+                            margin: EdgeInsets.only(bottom: 16, left: 16, right: 16),
+                            child: Padding(
                               padding: const EdgeInsets.all(16.0),
-                              child: Text(
-                                'Files from $deviceName',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Files from $deviceName',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  SizedBox(height: 16),
+                                  Center(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(16.0),
+                                      child: Text('No shared files available'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+                        
+                        return Card(
+                          margin: EdgeInsets.only(bottom: 16, left: 16, right: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              ListTile(
+                                title: Text(
+                                  'Files from $deviceName',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                trailing: TextButton(
+                                  child: Text('View All'),
+                                  onPressed: () {
+                                    // Navigate to RemoteFilesScreen to see all files
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => RemoteFilesScreen(
+                                          deviceId: client['id'],
+                                          deviceName: deviceName,
+                                          initialFiles: [],
+                                          initialPath: '',
+                                        ),
+                                      ),
+                                    );
+                                  },
                                 ),
                               ),
-                            ),
-                            Container(
-                              height: 200,
-                              child: ListView.builder(
-                                padding: EdgeInsets.all(8),
+                              ListView.builder(
+                                shrinkWrap: true,
+                                physics: NeverScrollableScrollPhysics(),
+                                padding: EdgeInsets.symmetric(horizontal: 8),
                                 itemCount: files.length > 5 ? 5 : files.length,
                                 itemBuilder: (context, i) {
                                   final file = files[i];
                                   final isDir = file['isDirectory'] ?? false;
-
+                                  
                                   return ListTile(
                                     leading: Icon(
                                       isDir
@@ -658,18 +627,12 @@ class _ShareScreenState extends State<ShareScreen>
                                           Navigator.push(
                                             context,
                                             MaterialPageRoute(
-                                              builder:
-                                                  (
-                                                    context,
-                                                  ) => RemoteFilesScreen(
-                                                    deviceId: client['id'],
-                                                    deviceName: deviceName,
-                                                    initialFiles:
-                                                        isDir
-                                                            ? []
-                                                            : [], // We'll load the directory contents
-                                                    initialPath: file['path'],
-                                                  ),
+                                              builder: (context) => RemoteFilesScreen(
+                                                deviceId: client['id'],
+                                                deviceName: deviceName,
+                                                initialFiles: [],
+                                                initialPath: file['path'],
+                                              ),
                                             ),
                                           );
                                         } else {
@@ -684,42 +647,192 @@ class _ShareScreenState extends State<ShareScreen>
                                   );
                                 },
                               ),
+                              if (files.length > 5)
+                                Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: Center(
+                                    child: TextButton(
+                                      child: Text('Show more (${files.length - 5} more items)'),
+                                      onPressed: () {
+                                        // Navigate to RemoteFilesScreen to see all files
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => RemoteFilesScreen(
+                                              deviceId: client['id'],
+                                              deviceName: deviceName,
+                                              initialFiles: files,
+                                              initialPath: '',
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  )
+                // Show "No connected devices" message when not connected or no clients
+                : Expanded(
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.devices_other,
+                            size: 64,
+                            color: Colors.grey,
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            _isConnected 
+                                ? 'No connected devices found'
+                                : 'Connect to see shared files',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey,
                             ),
-                          ],
-                        ),
-                      );
-                    }),
-                  ],
-                ),
-              ),
-            },
-            // Recent devices section
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      'Recent',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                          ),
+                          SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            icon: Icon(Icons.refresh),
+                            label: Text(_isConnected ? 'Refresh' : 'Connect'),
+                            onPressed: startScanning,
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  // Expanded(
-                  //   child: ListView.builder(
-                  //     scrollDirection: Axis.horizontal,
-                  //     itemCount: recentDevices.length,
-                  //     itemBuilder: (context, index) {
-                  //       return _recentDeviceCard(recentDevices[index]);
-                  //     },
-                  //   ),
-                  // ),
+            
+            // Nearby Devices section
+            Container(
+              padding: EdgeInsets.all(16),
+              alignment: Alignment.centerLeft,
+              child: const Text(
+                'Nearby Devices',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF50C2C9),
+                ),
+              ),
+            ),
+            
+            // Your scanning animation
+            Container(
+              height: 120, // Reduced height from 200
+              padding: EdgeInsets.symmetric(vertical: 10), // Add padding
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Reduce the number of circles to 3 instead of 4
+                  ...List.generate(3, (index) {
+                    double radius = (index + 1) * 30; // Smaller radius values
+                    return AnimatedBuilder(
+                      animation: _controller,
+                      builder: (context, child) {
+                        double scale = 1.0 + sin((_controller.value * 2 * pi) + index) * 0.05;
+                        return Transform.scale(
+                          scale: scale,
+                          child: Container(
+                            width: radius * 2,
+                            height: radius * 2,
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: Theme.of(context).colorScheme.secondary.withOpacity(0.3),
+                                width: 1.5,
+                              ),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  }),
+                  // Make a more compact connection button
+                  GestureDetector(
+                    onTap: () {
+                      print('button pressed');
+                      startScanning();
+                    },
+                    child: Container(
+                      width: 50, // Reduced from 60
+                      height: 50, // Reduced from 60
+                      decoration: BoxDecoration(
+                        color: _isConnected ? Colors.green : Color(0xFF50C2C9),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 4,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            _isConnected ? Icons.wifi : Icons.sync,
+                            color: Colors.white,
+                            size: 24, // Reduced from 30
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Add status text below the button
+                  Positioned(
+                    bottom: 0,
+                    child: Text(
+                      _isConnected ? 'Connected' : 'Tap to connect',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: _isConnected ? Colors.green : Colors.grey[600],
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
+            
+            // Display connected clients section
+            if (_connectedClients.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8.0, bottom: 16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        'Connected Clients',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF50C2C9),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 160, // Reduce height to fit better in the layout
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        itemCount: _connectedClients.length,
+                        itemBuilder: (context, index) {
+                          return _connectedDeviceCard(_connectedClients[index]);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
@@ -749,15 +862,19 @@ class _ShareScreenState extends State<ShareScreen>
   }
 
   // Card for connected devices
+  // Update the _connectedDeviceCard method to fix overflow issues
   Widget _connectedDeviceCard(Map<String, dynamic> device) {
     // Don't show our own device in the list
-    if (_deviceId != null && device['deviceId'] == _deviceId) {
-      return SizedBox.shrink(); // Hide our own device
+    final isOwnDevice = _deviceId != null && 
+        (device['deviceId'] == _deviceId || device['id'] == _deviceId);
+    
+    if (isOwnDevice) {
+      return SizedBox.shrink();
     }
 
     return Container(
-      width: 330,
-      height: 260,
+      width: 180, // Reduced width from 330
+      height: 180, // Reduced height to fit content better
       margin: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
@@ -768,161 +885,101 @@ class _ShareScreenState extends State<ShareScreen>
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.max,
         children: [
           Icon(
             _transferMode == FileTransferMode.sending
                 ? Icons.upload
-                : _transferMode == FileTransferMode.receiving
-                ? Icons.download
                 : Icons.devices,
-            size: 30,
-            color:
-                _transferMode == FileTransferMode.sending
-                    ? Colors.amber
-                    : _transferMode == FileTransferMode.receiving
-                    ? Colors.green
-                    : Colors.white,
+            size: 28, // Reduced from 30
+            color: _transferMode == FileTransferMode.sending
+                ? Colors.amber
+                : Colors.white,
           ),
           const SizedBox(height: 8),
-          Text(
-            device['name'] ?? 'Unknown',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: Text(
+              device['name'] ?? 'Unknown',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+                fontSize: 14, // Reduced from default
+              ),
             ),
           ),
-          Text(
-            device['id'] ?? 'Unknown ID',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: Theme.of(context).colorScheme.secondary),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: Text(
+              device['id'] ?? 'Unknown ID',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.secondary,
+                fontSize: 11, // Reduced size
+              ),
+            ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
 
           // Show different buttons based on the transfer mode
           if (_transferMode == FileTransferMode.idle) ...[
-            // Mode selection buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ElevatedButton.icon(
-                  icon: Icon(Icons.upload, size: 16),
-                  label: Text('Send', style: TextStyle(fontSize: 12)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.amber,
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _transferMode = FileTransferMode.sending;
-                    });
-                  },
-                ),
-                SizedBox(width: 10),
-                ElevatedButton.icon(
-                  icon: Icon(Icons.download, size: 16),
-                  label: Text('Receive', style: TextStyle(fontSize: 12)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _transferMode = FileTransferMode.receiving;
-                    });
-                  },
-                ),
-              ],
-            ),
-            SizedBox(height: 8),
-            // Chat button
+            // Only show Send button
             ElevatedButton.icon(
-              icon: Icon(Icons.chat),
-              label: Text('Chat'),
+              icon: Icon(Icons.upload, size: 14),
+              label: Text('Send', style: TextStyle(fontSize: 12)),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Color(0xFF50C2C9),
-                padding: EdgeInsets.symmetric(horizontal: 20),
+                backgroundColor: Colors.amber,
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                minimumSize: Size(100, 36),
               ),
-              onPressed: () => navigateToFileTransfer(device['id']),
+              onPressed: () {
+                setState(() {
+                  _transferMode = FileTransferMode.sending;
+                });
+              },
             ),
           ],
 
           // Send mode UI
           if (_transferMode == FileTransferMode.sending) ...[
-            Text(
-              'Select files to send',
-              style: TextStyle(
-                color: Colors.amber,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: 8),
-            ElevatedButton.icon(
-              icon: Icon(Icons.attach_file),
-              label: Text('Select File'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
-              onPressed: () => sendFileToClient(device['id']),
-            ),
-            SizedBox(height: 8),
-            TextButton.icon(
-              icon: Icon(Icons.cancel),
-              label: Text('Cancel'),
-              onPressed: () {
-                setState(() {
-                  _transferMode = FileTransferMode.idle;
-                });
-              },
-            ),
-          ],
-
-          // Receive mode UI
-          if (_transferMode == FileTransferMode.receiving) ...[
-            Text(
-              'Ready to receive files',
-              style: TextStyle(
-                color: Colors.green,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: 8),
-            Icon(Icons.download_done, size: 32, color: Colors.green),
-            SizedBox(height: 8),
-            TextButton.icon(
-              icon: Icon(Icons.cancel),
-              label: Text('Cancel'),
-              onPressed: () {
-                setState(() {
-                  _transferMode = FileTransferMode.idle;
-                });
-              },
-            ),
-          ],
-          // Add browse button
-          ElevatedButton.icon(
-            icon: Icon(Icons.folder_open),
-            label: Text('Browse All Files'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Color(0xFF50C2C9),
-              padding: EdgeInsets.symmetric(horizontal: 20),
-            ),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder:
-                      (context) => RemoteFilesScreen(
-                        deviceId: device['id'],
-                        deviceName: device['name'] ?? 'Unknown Device',
-                        initialFiles: device['files'] ?? [],
-                        initialPath: '',
-                      ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Text(
+                'Select files',
+                style: TextStyle(
+                  color: Colors.amber,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
                 ),
-              );
-            },
-          ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            SizedBox(height: 8),
+            SizedBox(
+              height: 36,
+              child: ElevatedButton(
+                child: Text('Browse', style: TextStyle(fontSize: 12)),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+                onPressed: () => sendFileToClient(device['id']),
+              ),
+            ),
+            SizedBox(height: 4),
+            SizedBox(
+              height: 30,
+              child: TextButton(
+                child: Text('Cancel', style: TextStyle(fontSize: 12)),
+                onPressed: () {
+                  setState(() {
+                    _transferMode = FileTransferMode.idle;
+                  });
+                },
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1051,6 +1108,14 @@ class _ShareScreenState extends State<ShareScreen>
 
   // Add method to request file from another device
   void _requestFileFromDevice(String deviceId, String filePath) {
+    // Don't allow requesting files from our own device
+    if (_deviceId != null && deviceId == _deviceId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Cannot request files from your own device')),
+      );
+      return;
+    }
+    
     // Get the filename from the path
     final fileName = path.basename(filePath);
 
@@ -1290,6 +1355,19 @@ class _ShareScreenState extends State<ShareScreen>
       print('Error listing directory $directory: $e');
     }
   }
+
+  // Add this method to the _ShareScreenState class
+  void _refreshAllFileLists() {
+  if (_channel != null && _isConnected) {
+    // Ask the server to request updated file lists from all clients
+    _channel!.sink.add(jsonEncode({
+      "type": "refresh_all_file_lists",
+    }));
+    
+    // Also send our own updated file list
+    _sendInitialFileList();
+  }
+}
 }
 
 // Use a secure key in production!

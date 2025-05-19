@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:datavault/utils/storage_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -14,11 +15,13 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   String? _currentStoragePath;
   bool _isLoading = true;
+  String _deviceName = ""; // Add this line for device name
 
   @override
   void initState() {
     super.initState();
     _loadStoragePath();
+    _loadDeviceName(); // Add this line
   }
 
   Future<void> _loadStoragePath() async {
@@ -26,6 +29,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _currentStoragePath = path;
       _isLoading = false;
+    });
+  }
+
+  // Add this method to load device name
+  Future<void> _loadDeviceName() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _deviceName = prefs.getString('device_name') ?? "My Device";
     });
   }
 
@@ -89,6 +100,64 @@ class _SettingsScreenState extends State<SettingsScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
+  }
+
+  Future<void> _saveDeviceName(String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('device_name', name);
+    setState(() {
+      _deviceName = name;
+    });
+  }
+
+  // Add this method to show the rename dialog
+  void _showRenameDialog() {
+    final TextEditingController nameController = TextEditingController(text: _deviceName);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Rename Device'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Enter a new name for your device:'),
+            SizedBox(height: 16),
+            TextField(
+              controller: nameController,
+              decoration: InputDecoration(
+                labelText: 'Device Name',
+                border: OutlineInputBorder(),
+              ),
+              maxLength: 30,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            child: Text('Cancel'),
+            onPressed: () => Navigator.pop(context),
+          ),
+          ElevatedButton(
+            child: Text('Save'),
+            onPressed: () async {
+              final newName = nameController.text.trim();
+              if (newName.isNotEmpty) {
+                await _saveDeviceName(newName);
+                Navigator.pop(context);
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Device renamed to $newName')),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFF50C2C9),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildStorageLimitSetting() {
@@ -170,6 +239,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
               : ListView(
                   padding: EdgeInsets.all(16),
                   children: [
+                    // Add Device Name card at the top
+                    Card(
+                      color: Theme.of(context).colorScheme.primary,
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Device Settings',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            SizedBox(height: 16),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Device name:'),
+                                    SizedBox(height: 4),
+                                    Text(
+                                      _deviceName,
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                ElevatedButton.icon(
+                                  icon: Icon(Icons.edit),
+                                  label: Text('Rename'),
+                                  onPressed: _showRenameDialog,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Color(0xFF50C2C9),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 16),
                     Card(
                       color: Theme.of(context).colorScheme.primary,
                       child: Padding(
