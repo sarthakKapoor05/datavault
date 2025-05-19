@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:datavault/services/event_bus_service.dart';
 import 'package:path/path.dart' as path;
 import 'package:datavault/utils/storage_manager.dart';
+import 'package:encrypt/encrypt.dart' as encrypt;
 
 class ConnectionService with ChangeNotifier {
   static final ConnectionService _instance = ConnectionService._internal();
@@ -520,6 +521,7 @@ class ConnectionService with ChangeNotifier {
       final fileName = path.basename(filePath);
       final onSuccess = _expectedFile!['onSuccess'] as Function(File)?;
       final onError = _expectedFile!['onError'] as Function(String)?;
+      final isEncrypted = _expectedFile!['encrypted'] as bool? ?? true; // Default to true for safety
       
       // Find client name
       String senderName = 'Unknown Device';
@@ -534,10 +536,13 @@ class ConnectionService with ChangeNotifier {
       String safeSenderName = senderName.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
       print('💾 Saving file $fileName from $senderName (path: $filePath)');
       
+      // Decrypt data if it's encrypted
+      final bytesToSave = isEncrypted ? decryptFileBytes(fileData) : fileData;
+      
       // Save file
       final file = await StorageManager.saveToDefaultStorage(
         fileName,
-        Uint8List.fromList(fileData),
+        Uint8List.fromList(bytesToSave),
         subfolder: safeSenderName,
       );
       
@@ -572,6 +577,22 @@ class ConnectionService with ChangeNotifier {
       }
       _expectedFile = null;
     }
+  }
+
+  List<int> decryptFileBytes(List<int> encryptedBytes) {
+    // Extract IV from the first 16 bytes
+    final receivedIv = encrypt.IV(
+      Uint8List.fromList(encryptedBytes.sublist(0, 16)),
+    );
+    final encryptedData = encryptedBytes.sublist(16);
+    final encrypter = encrypt.Encrypter(
+      encrypt.AES(_encryptionKey, mode: encrypt.AESMode.cbc),
+    );
+    final decrypted = encrypter.decryptBytes(
+      encrypt.Encrypted(Uint8List.fromList(encryptedData)),
+      iv: receivedIv,
+    );
+    return decrypted;
   }
 
   // Add this method to your ConnectionService class
@@ -814,10 +835,13 @@ class ConnectionService with ChangeNotifier {
       print('📄 File found, preparing to send: $filePath');
       
       // Read the file
-      final bytes = await file.readAsBytes();
-      final fileSize = bytes.length;
+      final fileBytes = await file.readAsBytes();
       
-      // First send metadata
+      // Encrypt the file data
+      final encryptedBytes = encryptFileBytes(fileBytes);
+      final fileSize = encryptedBytes.length;
+      
+      // First send metadata with encrypted size
       print('📤 Sending file metadata: $filePath (${fileSize} bytes)');
       _channel!.sink.add(jsonEncode({
         "type": "file_metadata",
@@ -825,14 +849,15 @@ class ConnectionService with ChangeNotifier {
         "filename": filePath,
         "size": fileSize,
         "fromId": _deviceId,
+        "encrypted": true, // Flag to indicate encryption
       }));
       
       // Wait a moment for metadata to be processed
       await Future.delayed(Duration(milliseconds: 500));
       
-      // Then send the actual file content
-      print('📤 Sending file content: $filePath (${fileSize} bytes)');
-      _channel!.sink.add(bytes);
+      // Then send the actual encrypted file content
+      print('📤 Sending encrypted file content: $filePath (${fileSize} bytes)');
+      _channel!.sink.add(encryptedBytes);
       
       print('✅ File sent successfully: $filePath');
       
@@ -844,6 +869,7 @@ class ConnectionService with ChangeNotifier {
         'progress': 1.0,
         'status': 'sent',
         'startTime': DateTime.now(),
+        'encrypted': true,
       };
       
       // Remove tracked transfer after delay
@@ -852,8 +878,7 @@ class ConnectionService with ChangeNotifier {
         notifyListeners();
       });
       
-      // Add this to the _autoSendRequestedFile method after initiating the transfer
-      // This creates a non-intrusive notification
+      // Create a non-intrusive notification
       _showFileTransferNotification(requesterId, filePath);
       
       notifyListeners();
@@ -918,4 +943,19 @@ class ConnectionService with ChangeNotifier {
   //   disconnect();
   //   super.dispose();
   // }
-  
+
+  // Add these encryption methods to your ConnectionService class, similar to Nearby_Devices_screen
+  // Use a secure key in production!
+  final _encryptionKey = encrypt.Key.fromUtf8(
+    'my32lengthsupersecretnooneknows!',
+  ); // 32 chars
+
+  List<int> encryptFileBytes(List<int> bytes) {
+    final iv = encrypt.IV.fromSecureRandom(16); // Random IV for each file
+    final encrypter = encrypt.Encrypter(
+      encrypt.AES(_encryptionKey, mode: encrypt.AESMode.cbc),
+    );
+    final encrypted = encrypter.encryptBytes(bytes, iv: iv);
+    // Prepend IV to encrypted bytes
+    return [...iv.bytes, ...encrypted.bytes];
+  }
