@@ -523,7 +523,7 @@ class ConnectionService with ChangeNotifier {
       final onError = _expectedFile!['onError'] as Function(String)?;
       final isEncrypted = _expectedFile!['encrypted'] as bool? ?? true; // Default to true for safety
       
-      // Find client name
+      // Find client name for logging only
       String senderName = 'Unknown Device';
       for (var client in _connectedClients) {
         if (client['id'] == senderId) {
@@ -532,18 +532,16 @@ class ConnectionService with ChangeNotifier {
         }
       }
       
-      // Use sender name for subfolder
-      String safeSenderName = senderName.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
-      print('💾 Saving file $fileName from $senderName (path: $filePath)');
+      print('💾 Saving file $fileName from $senderName (path: $filePath) to root folder');
       
       // Decrypt data if it's encrypted
       final bytesToSave = isEncrypted ? decryptFileBytes(fileData) : fileData;
       
-      // Save file
+      // Save file directly to the root storage folder (no subfolder)
       final file = await StorageManager.saveToDefaultStorage(
         fileName,
         Uint8List.fromList(bytesToSave),
-        subfolder: safeSenderName,
+        // Remove the subfolder parameter to save in root folder
       );
       
       print('✅ File saved: ${file.path} (${fileData.length} bytes)');
