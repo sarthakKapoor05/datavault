@@ -163,6 +163,9 @@ class ConnectionService with ChangeNotifier {
                 } catch (e) {
                   // Error handling
                 }
+              } else if (message is List<int>) {
+                // Handle binary data (file content)
+                _handleIncomingFile(message);
               }
             });
           }
@@ -343,6 +346,105 @@ class ConnectionService with ChangeNotifier {
       }
     } catch (e) {
       print('Error sending initial file list: $e');
+    }
+  }
+
+  // Request a file from a remote device
+  Future<void> requestFile(
+    String deviceId, 
+    String filePath, 
+    {Function(File)? onSuccess, Function(String)? onError}
+  ) async {
+    if (!isConnected || _channel == null) {
+      if (onError != null) {
+        onError('Not connected to server');
+      }
+      return;
+    }
+
+    try {
+      print('Requesting file from $deviceId: $filePath');
+      _channel!.sink.add(jsonEncode({
+        "type": "request_file",
+        "targetId": deviceId,
+        "filename": filePath
+      }));
+      
+      // Store expected file details for tracking
+      _expectedFile = {
+        'filename': filePath,
+        'fromId': deviceId,
+        'onSuccess': onSuccess,
+        'onError': onError,
+      };
+      
+      // Set a timeout
+      Future.delayed(Duration(seconds: 30), () {
+        if (_expectedFile != null && _expectedFile!['filename'] == filePath) {
+          print('File request timed out: $filePath');
+          if (onError != null) {
+            onError('Request timed out after 30 seconds');
+          }
+          _expectedFile = null;
+        }
+      });
+    } catch (e) {
+      print('Error requesting file: $e');
+      if (onError != null) {
+        onError('Error sending request: $e');
+      }
+    }
+  }
+
+  Map<String, dynamic>? _expectedFile;
+
+  // Add this helper method to handle incoming file data
+  Future<void> _handleIncomingFile(List<int> fileData) async {
+    try {
+      if (_expectedFile == null) {
+        print('Received unexpected file data');
+        return;
+      }
+      
+      final senderId = _expectedFile!['fromId'] as String;
+      final fileName = _expectedFile!['filename'] as String;
+      final onSuccess = _expectedFile!['onSuccess'] as Function(File)?;
+      final onError = _expectedFile!['onError'] as Function(String)?;
+      
+      // Find client name
+      String senderName = 'Unknown Device';
+      final senderDevice = _connectedClients.firstWhere(
+        (client) => client['id'] == senderId,
+        orElse: () => {'name': 'Unknown Device'},
+      );
+      senderName = senderDevice['name'] ?? 'Unknown Device';
+      
+      // Use sender name for subfolder
+      String safeSenderName = senderName.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+      
+      // Save file
+      final file = await StorageManager.saveToDefaultStorage(
+        path.basename(fileName),  // Use only the filename part
+        Uint8List.fromList(fileData),
+        subfolder: safeSenderName,
+      );
+      
+      print('File saved: ${file.path}');
+      
+      // Call success callback if provided
+      if (onSuccess != null) {
+        onSuccess(file);
+      }
+      
+      // Reset
+      _expectedFile = null;
+    } catch (e) {
+      print('Error handling incoming file: $e');
+      final onError = _expectedFile?['onError'] as Function(String)?;
+      if (onError != null) {
+        onError('Error saving file: $e');
+      }
+      _expectedFile = null;
     }
   }
 
