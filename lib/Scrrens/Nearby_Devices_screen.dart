@@ -140,12 +140,6 @@ class _ShareScreenState extends State<ShareScreen>
                   _handleDirectoryListingRequest(path, requesterId, recursive);
                 }
               }
-
-              // Add file transfer completion handler
-              if (data['type'] == 'file_transfer_complete') {
-                // Refresh file lists when the server tells us a file transfer completed
-                _refreshAllFileLists();
-              }
             }
             // Handle binary data (file content)
             else if (message is List<int> && _expectedFile != null) {
@@ -258,6 +252,7 @@ class _ShareScreenState extends State<ShareScreen>
       final file = await StorageManager.saveToDefaultStorage(
         fileName,
         Uint8List.fromList(decryptedBytes),
+        // subfolder: safeSenderName, // Use sender name instead of ID
       );
 
       // Show success notification
@@ -276,18 +271,14 @@ class _ShareScreenState extends State<ShareScreen>
       // Clear the expected file metadata
       setState(() {
         _expectedFile = null;
-      });
-      
-      // Request updated file list from all connected devices
-      _refreshAllFileLists();
-
-      // Reset transfer mode after a delay
-      Future.delayed(Duration(seconds: 2), () {
-        if (mounted) {
-          setState(() {
-            _transferMode = FileTransferMode.idle;
-          });
-        }
+        // Reset transfer mode after a delay
+        Future.delayed(Duration(seconds: 2), () {
+          if (mounted) {
+            setState(() {
+              _transferMode = FileTransferMode.idle;
+            });
+          }
+        });
       });
     } catch (e) {
       print('Error saving received file: $e');
@@ -369,7 +360,7 @@ class _ShareScreenState extends State<ShareScreen>
         final data = jsonDecode(message);
         if (data['type'] == 'ready_for_file') {
           // Send the actual encrypted file data
-          _channel!.sink.add(encryptedBytes);
+          _channel!.sink.add(encryptedBytes); // <--- FIXED
 
           Future.delayed(Duration(milliseconds: 500), () {
             if (!sendCompleter.isCompleted) {
@@ -390,9 +381,6 @@ class _ShareScreenState extends State<ShareScreen>
     });
 
     await sendCompleter.future;
-    
-    // After file is sent, refresh the file lists
-    _refreshAllFileLists();
   }
 
   // Start ping timer to keep connection alive and detect disconnection
@@ -615,6 +603,18 @@ class _ShareScreenState extends State<ShareScreen>
                                     trailing: ElevatedButton(
                                       child: Text(
                                         isDir ? 'Browse' : 'Get File',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.white,  // White text for better contrast
+                                        ),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: isDir ? Colors.amber[600] : Colors.blue[600], // Darker shades for better contrast
+                                        foregroundColor: Colors.white,
+                                        elevation: 2,
+                                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                        minimumSize: Size(80, 32),
                                       ),
                                       onPressed: () {
                                         if (isDir) {
@@ -694,8 +694,20 @@ class _ShareScreenState extends State<ShareScreen>
                           ),
                           SizedBox(height: 16),
                           ElevatedButton.icon(
-                            icon: Icon(Icons.refresh),
-                            label: Text(_isConnected ? 'Refresh' : 'Connect'),
+                            icon: Icon(Icons.refresh, color: Colors.white),
+                            label: Text(
+                              _isConnected ? 'Refresh' : 'Connect',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Color(0xFF3DABB5), // Slightly darker teal for better contrast
+                              foregroundColor: Colors.white,
+                              elevation: 2,
+                              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            ),
                             onPressed: startScanning,
                           ),
                         ],
@@ -922,14 +934,22 @@ class _ShareScreenState extends State<ShareScreen>
 
           // Show different buttons based on the transfer mode
           if (_transferMode == FileTransferMode.idle) ...[
-            // Only show Send button
+            // Only show Send button with improved contrast
             ElevatedButton.icon(
-              icon: Icon(Icons.upload, size: 14),
-              label: Text('Send', style: TextStyle(fontSize: 12)),
+              icon: Icon(Icons.upload, size: 14, color: Colors.black87),
+              label: Text('Send', 
+                style: TextStyle(
+                  fontSize: 12, 
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87, // Darker text for better contrast on amber
+                )
+              ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber,
+                backgroundColor: Colors.amber[400], // Brighter amber for better visibility
+                foregroundColor: Colors.black87,
                 padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 minimumSize: Size(100, 36),
+                elevation: 2, // Add slight elevation for better visual distinction
               ),
               onPressed: () {
                 setState(() {
@@ -946,7 +966,7 @@ class _ShareScreenState extends State<ShareScreen>
               child: Text(
                 'Select files',
                 style: TextStyle(
-                  color: Colors.amber,
+                  color: Colors.amber[300], // Brighter shade for better contrast
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
                 ),
@@ -957,8 +977,18 @@ class _ShareScreenState extends State<ShareScreen>
             SizedBox(
               height: 36,
               child: ElevatedButton(
-                child: Text('Browse', style: TextStyle(fontSize: 12)),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+                child: Text('Browse', 
+                  style: TextStyle(
+                    fontSize: 12, 
+                    fontWeight: FontWeight.w500,
+                    color: Colors.black87, // Dark text on amber background
+                  )
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber[400], // Brighter amber
+                  foregroundColor: Colors.black87,
+                  elevation: 2,
+                ),
                 onPressed: () => sendFileToClient(device['id']),
               ),
             ),
@@ -966,7 +996,13 @@ class _ShareScreenState extends State<ShareScreen>
             SizedBox(
               height: 30,
               child: TextButton(
-                child: Text('Cancel', style: TextStyle(fontSize: 12)),
+                child: Text('Cancel', 
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.red[300], // More visible cancel button
+                    fontWeight: FontWeight.w500,
+                  )
+                ),
                 onPressed: () {
                   setState(() {
                     _transferMode = FileTransferMode.idle;
@@ -1350,19 +1386,6 @@ class _ShareScreenState extends State<ShareScreen>
       print('Error listing directory $directory: $e');
     }
   }
-
-  // Add this method to the _ShareScreenState class
-  void _refreshAllFileLists() {
-  if (_channel != null && _isConnected) {
-    // Ask the server to request updated file lists from all clients
-    _channel!.sink.add(jsonEncode({
-      "type": "refresh_all_file_lists",
-    }));
-    
-    // Also send our own updated file list
-    _sendInitialFileList();
-  }
-}
 }
 
 // Use a secure key in production!
