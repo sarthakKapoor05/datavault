@@ -15,6 +15,7 @@ import 'dart:typed_data';
 import 'package:datavault/services/connection_service.dart';
 import 'package:provider/provider.dart';
 import 'package:path/path.dart' as path;
+import 'package:intl/intl.dart';
 
 enum FileTransferMode { idle, sending, receiving }
 
@@ -1035,6 +1036,87 @@ class _ShareScreenState extends State<ShareScreen>
 
   // Add method to request file from another device
   void _requestFileFromDevice(String deviceId, String filePath) {
+    // Get the filename from the path
+    final fileName = path.basename(filePath);
+    
+    // Get the file details from the list
+    Map<String, dynamic>? fileDetails;
+    for (final device in _connectedClients) {
+      if (device['id'] == deviceId && device['files'] != null) {
+        for (final file in device['files']) {
+          if (file['path'] == filePath) {
+            fileDetails = Map<String, dynamic>.from(file);
+            break;
+          }
+        }
+      }
+    }
+    
+    if (fileDetails == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('File details not found'))
+      );
+      return;
+    }
+    
+    // Show file details dialog
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('File Details'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ListTile(
+              leading: Icon(_getFileIcon(fileName), color: Colors.blue),
+              title: Text(fileName, style: TextStyle(fontWeight: FontWeight.bold)),
+              contentPadding: EdgeInsets.zero,
+            ),
+            Divider(),
+            _buildDetailRow('Size', _formatFileSize(fileDetails!['size'] ?? 0)),
+            _buildDetailRow('Path', filePath),
+            if (fileDetails['modified'] != null)
+              _buildDetailRow('Modified', fileDetails['modified'].toString()),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Start the download
+              _startDownload(deviceId, filePath, fileName);
+            },
+            child: Text('Download'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String title, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text('$title:', style: TextStyle(fontWeight: FontWeight.w500)),
+          ),
+          Expanded(
+            child: Text(value, style: TextStyle(color: Colors.black87)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _startDownload(String deviceId, String filePath, String fileName) {
     if (_channel != null) {
       _channel!.sink.add(jsonEncode({
         "type": "request_file",
@@ -1043,7 +1125,7 @@ class _ShareScreenState extends State<ShareScreen>
       }));
       
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Requesting file...'))
+        SnackBar(content: Text('Requesting file $fileName...'))
       );
     }
   }
