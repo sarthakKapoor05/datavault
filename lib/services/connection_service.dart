@@ -91,6 +91,8 @@ class ConnectionService with ChangeNotifier {
     notifyListeners();
   }
 
+  // Replace the _setupListeners method with this fixed version
+
   void _setupListeners() {
     _broadcastStream?.listen(
       (message) {
@@ -102,7 +104,7 @@ class ConnectionService with ChangeNotifier {
               _saveDeviceId(data['deviceId']);
             }
             
-            if (data['type'] == 'connected_devices') {
+            else if (data['type'] == 'connected_devices') {
               final devices = data['devices'];
               if (devices is List) {
                 _connectedClients = List<Map<String, dynamic>>.from(
@@ -112,7 +114,7 @@ class ConnectionService with ChangeNotifier {
               }
             }
 
-            if (data['type'] == 'file_access_request') {
+            else if (data['type'] == 'file_access_request') {
               final requesterId = data['requesterId'];
               final requesterName = data['requesterName'];
               
@@ -128,7 +130,7 @@ class ConnectionService with ChangeNotifier {
               ));
             }
 
-            if (data['type'] == 'file_access_response') {
+            else if (data['type'] == 'file_access_response') {
               final granted = data['granted'] == true;
               final targetId = data['targetId'];
               
@@ -143,36 +145,38 @@ class ConnectionService with ChangeNotifier {
               
               notifyListeners();
             }
-
-            _channel!.stream.listen((message) {
-              if (message is String) {
-                try {
-                  final data = jsonDecode(message);
-                  
-                  // Add the code here
-                  if (data['type'] == 'request_initial_file_list') {
-                    _sendInitialFileList();
-                  }
-                  
-                  if (data['type'] == 'device_files_update') {
-                    final deviceId = data['deviceId'];
-                    final deviceName = data['deviceName'];
-                    final files = data['files'];
-                    
-                    // Store the files listing
-                    _storeDeviceFiles(deviceId, deviceName, files);
-                    
-                    // Notify listeners
-                    notifyListeners();
-                  }
-                } catch (e) {
-                  // Error handling
-                }
-              } else if (message is List<int>) {
-                // Handle binary data (file content)
-                _handleIncomingFile(message);
+            
+            // Add handlers for file requests
+            else if (data['type'] == 'request_initial_file_list') {
+              _sendInitialFileList();
+            }
+            
+            else if (data['type'] == 'device_files_update') {
+              final deviceId = data['deviceId'];
+              final deviceName = data['deviceName'];
+              final files = data['files'];
+              
+              // Store the files listing
+              _storeDeviceFiles(deviceId, deviceName, files);
+              
+              // Notify listeners
+              notifyListeners();
+            }
+            
+            // Critical: Add file metadata handler
+            else if (data['type'] == 'file_metadata') {
+              print('Received file metadata: ${data['filename']}, size: ${data['size']}');
+              
+              // Store or update expected file details
+              if (_expectedFile != null && _expectedFile!['fromId'] == data['fromId']) {
+                _expectedFile!['size'] = data['size'];
+                _expectedFile!['filename'] = data['filename'];
               }
-            });
+            }
+          } 
+          else if (message is List<int>) {
+            // Handle binary data (file content)
+            _handleIncomingFile(message);
           }
         } catch (e) {
           print('Error processing message: $e');
@@ -326,7 +330,7 @@ class ConnectionService with ChangeNotifier {
       final storagePath = await StorageManager.getDefaultStoragePath();
       final directory = Directory(storagePath);
       List<Map<String, dynamic>> files = [];
-      
+      print(await directory.exists());
       if (await directory.exists()) {
         await _collectFilesRecursively(directory, files, storagePath);
       }
@@ -360,10 +364,10 @@ class ConnectionService with ChangeNotifier {
           final stat = await entity.stat();
           final name = path.basename(entity.path);
           final isDir = entity is Directory;
+          print(name);
           
           // Calculate path relative to storage root
           final filePath = relativePath.isEmpty ? name : '$relativePath/$name';
-          
           files.add({
             'name': name,
             'path': filePath,
@@ -405,11 +409,14 @@ class ConnectionService with ChangeNotifier {
 
     try {
       print('Requesting file from $deviceId: $filePath');
-      _channel!.sink.add(jsonEncode({
-        "type": "request_file",
-        "targetId": deviceId,
-        "filename": filePath
-      }));
+      
+      // First check if we already have a pending file request
+      if (_expectedFile != null) {
+        if (onError != null) {
+          onError('Another file transfer is in progress');
+        }
+        return;
+      }
       
       // Store expected file details for tracking
       _expectedFile = {
@@ -417,14 +424,28 @@ class ConnectionService with ChangeNotifier {
         'fromId': deviceId,
         'onSuccess': onSuccess,
         'onError': onError,
+        'requestTime': DateTime.now().millisecondsSinceEpoch,
       };
       
+      // Send the request with correct format
+      _channel!.sink.add(jsonEncode({
+        "type": "request_file",
+        "targetId": deviceId,
+        "filename": filePath,
+        "requesterId": _deviceId,
+      }));
+      
       // Set a timeout
-      Future.delayed(Duration(seconds: 30), () {
-        if (_expectedFile != null && _expectedFile!['filename'] == filePath) {
+      Future.delayed(Duration(seconds: 60), () {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final requestTime = _expectedFile?['requestTime'] as int?;
+        
+        if (_expectedFile != null && 
+            _expectedFile!['filename'] == filePath &&
+            now - (requestTime ?? 0) >= 59000) {
           print('File request timed out: $filePath');
           if (onError != null) {
-            onError('Request timed out after 30 seconds');
+            onError('Request timed out after 60 seconds');
           }
           _expectedFile = null;
         }
@@ -434,6 +455,7 @@ class ConnectionService with ChangeNotifier {
       if (onError != null) {
         onError('Error sending request: $e');
       }
+      _expectedFile = null;
     }
   }
 
@@ -448,24 +470,29 @@ class ConnectionService with ChangeNotifier {
       }
       
       final senderId = _expectedFile!['fromId'] as String;
-      final fileName = _expectedFile!['filename'] as String;
+      final filePath = _expectedFile!['filename'] as String;
       final onSuccess = _expectedFile!['onSuccess'] as Function(File)?;
       final onError = _expectedFile!['onError'] as Function(String)?;
       
+      // Extract just the filename from the path
+      final fileName = path.basename(filePath);
+      
       // Find client name
       String senderName = 'Unknown Device';
-      final senderDevice = _connectedClients.firstWhere(
-        (client) => client['id'] == senderId,
-        orElse: () => {'name': 'Unknown Device'},
-      );
-      senderName = senderDevice['name'] ?? 'Unknown Device';
+      for (var client in _connectedClients) {
+        if (client['id'] == senderId) {
+          senderName = client['name'] ?? 'Unknown Device';
+          break;
+        }
+      }
       
       // Use sender name for subfolder
       String safeSenderName = senderName.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+      print('Saving file $fileName from $senderName (path: $filePath)');
       
       // Save file
       final file = await StorageManager.saveToDefaultStorage(
-        path.basename(fileName),  // Use only the filename part
+        fileName,
         Uint8List.fromList(fileData),
         subfolder: safeSenderName,
       );
