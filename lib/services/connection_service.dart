@@ -145,21 +145,8 @@ class ConnectionService with ChangeNotifier {
               
               print('📩 File request received from $requesterName for file: $filename');
               
-              // Store the request for UI to handle
-              if (!_pendingFileRequests.containsKey(requesterId)) {
-                _pendingFileRequests[requesterId] = [];
-              }
-              _pendingFileRequests[requesterId]!.add(filename);
-              
-              // Notify listeners so UI can show file request dialog
-              notifyListeners();
-              
-              // Fire a specific event for file requests
-              eventBus.fire(FileRequestEvent(
-                requesterId: requesterId,
-                requesterName: requesterName,
-                filename: filename,
-              ));
+              // Instead of firing an event, automatically send the file
+              _autoSendRequestedFile(requesterId, filename);
             }
 
             else if (data['type'] == 'file_access_response') {
@@ -800,9 +787,135 @@ class ConnectionService with ChangeNotifier {
     }
   }
 
-  @override
-  void dispose() {
-    disconnect();
-    super.dispose();
+  // Add this method to automatically process file requests
+  Future<void> _autoSendRequestedFile(String requesterId, String filePath) async {
+    if (!isConnected || _channel == null) return;
+    
+    try {
+      final storagePath = await StorageManager.getDefaultStoragePath();
+      final fullPath = path.join(storagePath, filePath);
+      final file = File(fullPath);
+      
+      if (!await file.exists()) {
+        print('❌ File not found: $fullPath');
+        
+        // Notify requester that file wasn't found
+        _channel!.sink.add(jsonEncode({
+          "type": "file_request_error",
+          "targetId": requesterId,
+          "filename": filePath,
+          "error": "File not found",
+          "fromId": _deviceId,
+        }));
+        
+        return;
+      }
+      
+      print('📄 File found, preparing to send: $filePath');
+      
+      // Read the file
+      final bytes = await file.readAsBytes();
+      final fileSize = bytes.length;
+      
+      // First send metadata
+      print('📤 Sending file metadata: $filePath (${fileSize} bytes)');
+      _channel!.sink.add(jsonEncode({
+        "type": "file_metadata",
+        "targetId": requesterId,
+        "filename": filePath,
+        "size": fileSize,
+        "fromId": _deviceId,
+      }));
+      
+      // Wait a moment for metadata to be processed
+      await Future.delayed(Duration(milliseconds: 500));
+      
+      // Then send the actual file content
+      print('📤 Sending file content: $filePath (${fileSize} bytes)');
+      _channel!.sink.add(bytes);
+      
+      print('✅ File sent successfully: $filePath');
+      
+      // Optional: Track successful transfers
+      _activeTransfers["outgoing-$filePath"] = {
+        'deviceId': requesterId,
+        'fileName': path.basename(filePath),
+        'size': fileSize,
+        'progress': 1.0,
+        'status': 'sent',
+        'startTime': DateTime.now(),
+      };
+      
+      // Remove tracked transfer after delay
+      Future.delayed(Duration(seconds: 5), () {
+        _activeTransfers.remove("outgoing-$filePath");
+        notifyListeners();
+      });
+      
+      // Add this to the _autoSendRequestedFile method after initiating the transfer
+      // This creates a non-intrusive notification
+      _showFileTransferNotification(requesterId, filePath);
+      
+      notifyListeners();
+    } catch (e) {
+      print('❌ Error sending requested file: $e');
+      
+      // Notify requester about the error
+      if (_channel != null) {
+        _channel!.sink.add(jsonEncode({
+          "type": "file_request_error",
+          "targetId": requesterId,
+          "filename": filePath,
+          "error": "Failed to send file: ${e.toString()}",
+          "fromId": _deviceId,
+        }));
+      }
+    }
+  }
+
+  // Add this to the _autoSendRequestedFile method after initiating the transfer
+  // This creates a non-intrusive notification
+
+  void _showFileTransferNotification(String requesterId, String filePath) {
+    // Find requester name
+    String requesterName = 'Unknown Device';
+    for (var client in _connectedClients) {
+      if (client['id'] == requesterId) {
+        requesterName = client['name'] ?? 'Unknown Device';
+        break;
+      }
+    }
+
+    final fileName = path.basename(filePath);
+    
+    // Fire an event that can be displayed as a snackbar or overlay
+    eventBus.fire(FileTransferStartedEvent(
+      deviceId: requesterId,
+      deviceName: requesterName,
+      fileName: fileName,
+      outgoing: true,
+    ));
   }
 }
+
+  // Add this event class to your event_bus_service.dart
+  class FileTransferStartedEvent {
+    final String deviceId;
+    final String deviceName;
+    final String fileName;
+    final bool outgoing;
+
+    FileTransferStartedEvent({
+      required this.deviceId, 
+      required this.deviceName, 
+      required this.fileName,
+      required this.outgoing,
+    });
+  }
+
+  // @override
+  // void dispose() {
+  //   disconnect();
+  //   super.dispose();
+  // }
+  
