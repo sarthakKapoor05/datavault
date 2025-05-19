@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 import 'package:datavault/Scrrens/file_transfer_screen.dart';
 import 'package:datavault/Scrrens/remote_files_screen.dart';
+import 'package:datavault/Scrrens/settings_screen.dart';
 import 'package:datavault/utils/storage_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -140,12 +141,6 @@ class _ShareScreenState extends State<ShareScreen>
                   _handleDirectoryListingRequest(path, requesterId, recursive);
                 }
               }
-
-              // Add file transfer completion handler
-              if (data['type'] == 'file_transfer_complete') {
-                // Refresh file lists when the server tells us a file transfer completed
-                _refreshAllFileLists();
-              }
             }
             // Handle binary data (file content)
             else if (message is List<int> && _expectedFile != null) {
@@ -227,6 +222,7 @@ class _ShareScreenState extends State<ShareScreen>
   }
 
   // Handle incoming file data
+  // Update the _handleIncomingFile method to check storage limits
   Future<void> _handleIncomingFile(List<int> fileData) async {
     try {
       // Update transfer mode
@@ -237,6 +233,7 @@ class _ShareScreenState extends State<ShareScreen>
       // Get sender/client info from _expectedFile
       final senderId = _expectedFile?['fromId'] ?? 'unknown_sender';
       final fileName = _expectedFile?['filename'] ?? 'file.bin';
+      final fileSize = _expectedFile?['size'] ?? fileData.length;
 
       // Find client name from the connected clients list using the sender ID
       String senderName = 'Unknown Device';
@@ -247,11 +244,31 @@ class _ShareScreenState extends State<ShareScreen>
         }
       }
 
-      // Use sanitized sender name as subfolder
-      String safeSenderName = senderName.replaceAll(
-        RegExp(r'[<>:"/\\|?*]'),
-        '_',
-      );
+      // Check if the storage limit would be exceeded by this file
+      final storageInfo = await _checkStorageLimits(fileSize);
+      
+      if (!storageInfo['isSpaceAvailable']) {
+        // Show storage full alert
+        _showStorageFullDialog(senderName, fileName, fileSize, storageInfo);
+        
+        // Reject the file transfer
+        if (_channel != null) {
+          _channel!.sink.add(jsonEncode({
+            "type": "file_transfer_rejected",
+            "reason": "storage_full",
+            "targetId": senderId,
+            "filename": fileName
+          }));
+        }
+        
+        // Reset transfer mode
+        setState(() {
+          _expectedFile = null;
+          _transferMode = FileTransferMode.idle;
+        });
+        
+        return;
+      }
 
       // Use the default storage location from StorageManager with sender name instead of ID
       final decryptedBytes = decryptFileBytes(fileData);
@@ -277,18 +294,14 @@ class _ShareScreenState extends State<ShareScreen>
       // Clear the expected file metadata
       setState(() {
         _expectedFile = null;
-      });
-      
-      // Request updated file list from all connected devices
-      _refreshAllFileLists();
-
-      // Reset transfer mode after a delay
-      Future.delayed(Duration(seconds: 2), () {
-        if (mounted) {
-          setState(() {
-            _transferMode = FileTransferMode.idle;
-          });
-        }
+        // Reset transfer mode after a delay
+        Future.delayed(Duration(seconds: 2), () {
+          if (mounted) {
+            setState(() {
+              _transferMode = FileTransferMode.idle;
+            });
+          }
+        });
       });
     } catch (e) {
       print('Error saving received file: $e');
@@ -370,7 +383,7 @@ class _ShareScreenState extends State<ShareScreen>
         final data = jsonDecode(message);
         if (data['type'] == 'ready_for_file') {
           // Send the actual encrypted file data
-          _channel!.sink.add(encryptedBytes);
+          _channel!.sink.add(encryptedBytes); // <--- FIXED
 
           Future.delayed(Duration(milliseconds: 500), () {
             if (!sendCompleter.isCompleted) {
@@ -391,9 +404,6 @@ class _ShareScreenState extends State<ShareScreen>
     });
 
     await sendCompleter.future;
-    
-    // After file is sent, refresh the file lists
-    _refreshAllFileLists();
   }
 
   // Start ping timer to keep connection alive and detect disconnection
@@ -616,6 +626,18 @@ class _ShareScreenState extends State<ShareScreen>
                                     trailing: ElevatedButton(
                                       child: Text(
                                         isDir ? 'Browse' : 'Get File',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.white,  // White text for better contrast
+                                        ),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: isDir ? Colors.amber[600] : Colors.blue[600], // Darker shades for better contrast
+                                        foregroundColor: Colors.white,
+                                        elevation: 2,
+                                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                        minimumSize: Size(80, 32),
                                       ),
                                       onPressed: () {
                                         if (isDir) {
@@ -695,8 +717,20 @@ class _ShareScreenState extends State<ShareScreen>
                           ),
                           SizedBox(height: 16),
                           ElevatedButton.icon(
-                            icon: Icon(Icons.refresh),
-                            label: Text(_isConnected ? 'Refresh' : 'Connect'),
+                            icon: Icon(Icons.refresh, color: Colors.white),
+                            label: Text(
+                              _isConnected ? 'Refresh' : 'Connect',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Color(0xFF3DABB5), // Slightly darker teal for better contrast
+                              foregroundColor: Colors.white,
+                              elevation: 2,
+                              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            ),
                             onPressed: startScanning,
                           ),
                         ],
@@ -923,14 +957,22 @@ class _ShareScreenState extends State<ShareScreen>
 
           // Show different buttons based on the transfer mode
           if (_transferMode == FileTransferMode.idle) ...[
-            // Only show Send button
+            // Only show Send button with improved contrast
             ElevatedButton.icon(
-              icon: Icon(Icons.upload, size: 14),
-              label: Text('Send', style: TextStyle(fontSize: 12)),
+              icon: Icon(Icons.upload, size: 14, color: Colors.black87),
+              label: Text('Send', 
+                style: TextStyle(
+                  fontSize: 12, 
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87, // Darker text for better contrast on amber
+                )
+              ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber,
+                backgroundColor: Colors.amber[400], // Brighter amber for better visibility
+                foregroundColor: Colors.black87,
                 padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 minimumSize: Size(100, 36),
+                elevation: 2, // Add slight elevation for better visual distinction
               ),
               onPressed: () {
                 setState(() {
@@ -947,7 +989,7 @@ class _ShareScreenState extends State<ShareScreen>
               child: Text(
                 'Select files',
                 style: TextStyle(
-                  color: Colors.amber,
+                  color: Colors.amber[300], // Brighter shade for better contrast
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
                 ),
@@ -958,8 +1000,18 @@ class _ShareScreenState extends State<ShareScreen>
             SizedBox(
               height: 36,
               child: ElevatedButton(
-                child: Text('Browse', style: TextStyle(fontSize: 12)),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+                child: Text('Browse', 
+                  style: TextStyle(
+                    fontSize: 12, 
+                    fontWeight: FontWeight.w500,
+                    color: Colors.black87, // Dark text on amber background
+                  )
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber[400], // Brighter amber
+                  foregroundColor: Colors.black87,
+                  elevation: 2,
+                ),
                 onPressed: () => sendFileToClient(device['id']),
               ),
             ),
@@ -967,7 +1019,13 @@ class _ShareScreenState extends State<ShareScreen>
             SizedBox(
               height: 30,
               child: TextButton(
-                child: Text('Cancel', style: TextStyle(fontSize: 12)),
+                child: Text('Cancel', 
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.red[300], // More visible cancel button
+                    fontWeight: FontWeight.w500,
+                  )
+                ),
                 onPressed: () {
                   setState(() {
                     _transferMode = FileTransferMode.idle;
@@ -1135,88 +1193,165 @@ class _ShareScreenState extends State<ShareScreen>
       return;
     }
 
-    // Show file details dialog
+    // Format the date for better readability
+    String formattedDate = "";
+    if (fileDetails['modified'] != null) {
+      try {
+        final DateTime modifiedDate = DateTime.parse(fileDetails['modified'].toString());
+        formattedDate = DateFormat('MMM d, yyyy h:mm a').format(modifiedDate);
+      } catch (e) {
+        formattedDate = fileDetails['modified'].toString();
+      }
+    }
+
+    // Show file details dialog with improved contrast
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text('File Details'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ListTile(
-                  leading: Icon(_getFileIcon(fileName), color: Colors.blue),
-                  title: Text(
-                    fileName,
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  contentPadding: EdgeInsets.zero,
-                ),
-                Divider(),
-                _buildDetailRow(
-                  'Size',
-                  _formatFileSize(fileDetails!['size'] ?? 0),
-                ),
-                _buildDetailRow('Path', filePath),
-                if (fileDetails['modified'] != null)
-                  _buildDetailRow(
-                    'Modified',
-                    fileDetails['modified'].toString(),
-                  ),
-              ],
+      builder: (context) => AlertDialog(
+        titlePadding: EdgeInsets.zero,
+        title: Container(
+          padding: EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Color(0xFF50C2C9),
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(4),
+              topRight: Radius.circular(4),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  // Start the download
-                  _startDownload(deviceId, filePath, fileName);
-                },
-                child: Text('Download'),
+          ),
+          child: Row(
+            children: [
+              Icon(_getFileIcon(fileName), color: Colors.white, size: 24),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'File Details',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ],
           ),
-    );
-  }
-
-  Widget _buildDetailRow(String title, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 80,
-            child: Text(
-              '$title:',
-              style: TextStyle(fontWeight: FontWeight.w500),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Row(
+                children: [
+                  Icon(_getFileIcon(fileName), color: Color(0xFF3D88C3), size: 36),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          fileName,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Colors.black87,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          _formatFileSize(fileDetails?['size'] ?? 0),
+                          style: TextStyle(
+                            color: Colors.black54,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
+            SizedBox(height: 16),
+            _buildDetailRow(
+              'Path',
+              filePath,
+              iconData: Icons.folder_outlined,
+              iconColor: Colors.amber[700] ?? Colors.amber, // Provide fallback color
+            ),
+            if (formattedDate.isNotEmpty)
+              _buildDetailRow(
+                'Modified',
+                formattedDate,
+                iconData: Icons.access_time,
+                iconColor: Colors.green[700] ?? Colors.green, // Provide fallback color
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.grey[700],
+            ),
+            child: Text('Cancel'),
           ),
-          Expanded(child: Text(value, style: TextStyle(color: Colors.black87))),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Start the download
+              _startDownload(deviceId, filePath, fileName);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFF50C2C9),
+              foregroundColor: Colors.white,
+              elevation: 2,
+            ),
+            child: Text('Download'),
+          ),
         ],
       ),
     );
   }
 
-  void _startDownload(String deviceId, String filePath, String fileName) {
-    if (_channel != null) {
-      _channel!.sink.add(
-        jsonEncode({
-          "type": "request_file",
-          "targetId": deviceId,
-          "filename": filePath,
-        }),
-      );
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Requesting file $fileName...')));
-    }
+  // Updated _buildDetailRow method with null safety
+  Widget _buildDetailRow(String title, String value, {IconData? iconData, required Color iconColor}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (iconData != null) ...[
+            Icon(iconData, size: 18, color: iconColor),
+            SizedBox(width: 8),
+          ],
+          SizedBox(
+            width: 70,
+            child: Text(
+              '$title:',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: Colors.black87,
+                height: 1.3,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 3,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // Add this method to your _ShareScreenState class
@@ -1352,18 +1487,187 @@ class _ShareScreenState extends State<ShareScreen>
     }
   }
 
-  // Add this method to the _ShareScreenState class
-  void _refreshAllFileLists() {
-  if (_channel != null && _isConnected) {
-    // Ask the server to request updated file lists from all clients
-    _channel!.sink.add(jsonEncode({
-      "type": "refresh_all_file_lists",
-    }));
-    
-    // Also send our own updated file list
-    _sendInitialFileList();
+  // Add method to check storage limits
+  Future<Map<String, dynamic>> _checkStorageLimits(int incomingFileSize) async {
+    try {
+      // Get the current storage path
+      final storagePath = await StorageManager.getDefaultStoragePath();
+      final storageDir = Directory(storagePath);
+      
+      // Get the max storage size limit
+      final maxStorageSize = await StorageManager.getMaxStorageSize();
+      
+      // Calculate current usage
+      int currentUsage = 0;
+      if (await storageDir.exists()) {
+        final entities = await storageDir.list(recursive: true).toList();
+        for (final entity in entities) {
+          if (entity is File) {
+            final stat = await entity.stat();
+            currentUsage += stat.size;
+          }
+        }
+      }
+      
+      // Check if adding this file would exceed the limit
+      final isSpaceAvailable = (currentUsage + incomingFileSize) <= maxStorageSize;
+      final remainingSpace = maxStorageSize - currentUsage;
+      
+      return {
+        'isSpaceAvailable': isSpaceAvailable,
+        'currentUsage': currentUsage,
+        'maxStorageSize': maxStorageSize,
+        'remainingSpace': remainingSpace,
+        'requiredSpace': incomingFileSize
+      };
+    } catch (e) {
+      print('Error checking storage limits: $e');
+      // In case of error, default to allowing the transfer
+      return {
+        'isSpaceAvailable': true,
+        'error': e.toString()
+      };
+    }
   }
-}
+
+  // Add method to show storage full dialog
+  void _showStorageFullDialog(String senderName, String fileName, int fileSize, Map<String, dynamic> storageInfo) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.storage, color: Colors.red),
+            SizedBox(width: 10),
+            Expanded(child: Text('Storage Full')),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Cannot receive file from $senderName due to insufficient storage space.',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 16),
+            Text('File: $fileName'),
+            Text('Size: ${_formatFileSize(fileSize)}'),
+            SizedBox(height: 16),
+            _buildStorageProgressBar(
+              storageInfo['currentUsage'],
+              storageInfo['maxStorageSize'],
+            ),
+            SizedBox(height: 8),
+            Text('Currently used: ${_formatFileSize(storageInfo['currentUsage'])}'),
+            Text('Remaining space: ${_formatFileSize(storageInfo['remainingSpace'])}'),
+            Text('Required space: ${_formatFileSize(storageInfo['requiredSpace'])}'),
+            SizedBox(height: 16),
+            Text(
+              'Please free up some space or increase your storage limit in Settings.',
+              style: TextStyle(fontStyle: FontStyle.italic),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('OK'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Open settings screen to adjust storage limit
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => SettingsScreen()),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFF50C2C9),
+            ),
+            child: Text('Go to Settings'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Add helper method to build storage progress bar
+  Widget _buildStorageProgressBar(int used, int total) {
+    final double percentage = total > 0 ? used / total : 0;
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Storage Usage: ${(percentage * 100).toStringAsFixed(1)}%',
+          style: TextStyle(fontWeight: FontWeight.w500),
+        ),
+        SizedBox(height: 4),
+        LinearProgressIndicator(
+          value: percentage,
+          backgroundColor: Colors.grey[300],
+          valueColor: AlwaysStoppedAnimation<Color>(
+            percentage > 0.9 ? Colors.red : 
+            percentage > 0.7 ? Colors.orange : 
+            Colors.green,
+          ),
+          minHeight: 8,
+          borderRadius: BorderRadius.circular(4),
+        ),
+      ],
+    );
+  }
+
+  // Add this method to your _ShareScreenState class
+  Future<void> _startDownload(String deviceId, String filePath, String fileName) async {
+    try {
+      setState(() {
+        _transferMode = FileTransferMode.receiving;
+      });
+      
+      // Show a snackbar to indicate download started
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+              SizedBox(width: 16),
+              Expanded(
+                child: Text('Requesting file: $fileName from device'),
+              ),
+            ],
+          ),
+          duration: Duration(seconds: 5),
+        ),
+      );
+      
+      // Send request to server
+      if (_channel != null) {
+        _channel!.sink.add(jsonEncode({
+          "type": "request_file",
+          "targetId": deviceId,
+          "filename": filePath,
+        }));
+        
+        // File data will be received through the broadcast stream listener
+        // that already exists, which calls _handleIncomingFile
+      }
+    } catch (e) {
+      print('Error requesting file: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error requesting file: $e')),
+      );
+      setState(() {
+        _transferMode = FileTransferMode.idle;
+      });
+    }
+  }
 }
 
 // Use a secure key in production!
