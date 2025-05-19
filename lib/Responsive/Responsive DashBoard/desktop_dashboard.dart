@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert'; // For jsonEncode
 import 'dart:io';
+import 'package:datavault/Responsive/Responsive%20DashBoard/mobile_dashboard.dart';
 import 'package:datavault/Scrrens/downloads_screen.dart';
 import 'package:datavault/Scrrens/settings_screen.dart';
 import 'package:datavault/Scrrens/remote_files_screen.dart'; // Add this line
@@ -36,6 +37,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
   double usedStorage = 0;
   double totalStorage = 0;
   String? _currentStoragePath;
+  String? _currentPath; // Add this line to define _currentPath
   List<FileSystemEntity> _storageFiles = []; // Add this for storage files
   bool _isLoadingStorageFiles = false; // Add loading indicator state
 
@@ -111,12 +113,22 @@ class _FileManagerPageState extends State<FileManagerPage> {
     'shared': true,
   };
 
+  // Add to the _FileManagerPageState class properties
+  bool _isGridView = false; // Default to list view
+
   @override
   void initState() {
     super.initState();
     _scanAndUpdateCategories();
     _loadStorageFiles();
     _calculateFolderUsage(); // Add this
+
+    // Initialize _currentPath
+    StorageManager.getDefaultStoragePath().then((path) {
+      setState(() {
+        _currentPath = path;
+      });
+    });
 
     // Listen for file access permission requests
     _permissionRequestSubscription = eventBus
@@ -178,6 +190,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       final storagePath = await StorageManager.getDefaultStoragePath();
       setState(() {
         _currentStoragePath = storagePath;
+        _currentPath = storagePath; // Add this line to set _currentPath
       });
 
       // Load files from the path
@@ -342,6 +355,16 @@ class _FileManagerPageState extends State<FileManagerPage> {
             'files',
             Row(
               children: [
+                // Add view toggle button
+                IconButton(
+                  icon: Icon(_isGridView ? Icons.list : Icons.grid_view),
+                  tooltip: _isGridView ? 'List View' : 'Grid View',
+                  onPressed: () {
+                    setState(() {
+                      _isGridView = !_isGridView;
+                    });
+                  },
+                ),
                 TextButton.icon(
                   icon: Icon(Icons.settings),
                   label: Text('Change'),
@@ -399,89 +422,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 ),
               )
             else
-              ListView.separated(
-                shrinkWrap: true,
-                physics: NeverScrollableScrollPhysics(),
-                itemCount:
-                    _storageFiles.length > 10
-                        ? 10
-                        : _storageFiles.length, // Limit to 10 files
-                separatorBuilder: (context, index) => Divider(height: 1),
-                itemBuilder: (context, index) {
-                  final file = _storageFiles[index];
-                  final fileName = file.path.split(Platform.pathSeparator).last;
-                  final isDirectory = file is Directory;
-
-                  return ListTile(
-                    leading: Icon(
-                      isDirectory ? Icons.folder : _getFileIcon(file.path),
-                      color: isDirectory ? Colors.amber : Colors.blue,
-                    ),
-                    title: Text(fileName, overflow: TextOverflow.ellipsis),
-                    subtitle: FutureBuilder<FileStat>(
-                      future: file.stat(),
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData) {
-                          return Text('Loading...');
-                        }
-
-                        final modified = DateFormat(
-                          'MMM d, yyyy',
-                        ).format(snapshot.data!.modified);
-
-                        final size =
-                            isDirectory
-                                ? 'Directory'
-                                : _formatFileSize(snapshot.data!.size);
-
-                        return Text('$modified • $size');
-                      },
-                    ),
-                    trailing:
-                        isDirectory
-                            ? null
-                            : IconButton(
-                              icon: Icon(Icons.open_in_new),
-                              onPressed: () async {
-                                try {
-                                  await OpenFile.open(file.path);
-                                } catch (e) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Error opening file: $e'),
-                                    ),
-                                  );
-                                }
-                              },
-                              tooltip: 'Open',
-                            ),
-                    onTap:
-                        isDirectory
-                            ? () async {
-                              // Navigate into the directory
-                              final dirPath = file.path;
-                              final dir = Directory(dirPath);
-                              final files = await dir.list().toList();
-
-                              setState(() {
-                                _currentStoragePath = dirPath;
-                                _storageFiles = files;
-                              });
-                            }
-                            : () async {
-                              try {
-                                await OpenFile.open(file.path);
-                              } catch (e) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Error opening file: $e'),
-                                  ),
-                                );
-                              }
-                            },
-                  );
-                },
-              ),
+              _isGridView 
+                  ? _buildGridView()
+                  : _buildListView(),
+                  
             if (_storageFiles.length > 10) // If we have more than 10 files
               Padding(
                 padding: const EdgeInsets.only(top: 16.0),
@@ -493,24 +437,23 @@ class _FileManagerPageState extends State<FileManagerPage> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder:
-                              (context) => StorageFilesScreen(
-                                initialPath: _currentStoragePath!,
-                              ),
+                          builder: (context) => StorageFilesScreen(
+                            initialPath: _currentStoragePath!,
+                          ),
                         ),
                       );
                     },
                   ),
                 ),
               ),
-            if (_currentStoragePath != null)
+            if (_currentPath != null)
               FutureBuilder<String>(
                 future: StorageManager.getDefaultStoragePath(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return SizedBox.shrink();
                   }
-                  if (_currentStoragePath != snapshot.data) {
+                  if (_currentPath != snapshot.data) {
                     return Padding(
                       padding: const EdgeInsets.only(top: 16),
                       child: Center(
@@ -518,12 +461,11 @@ class _FileManagerPageState extends State<FileManagerPage> {
                           icon: Icon(Icons.arrow_upward),
                           label: Text('Go to Parent Directory'),
                           onPressed: () async {
-                            final parentDir =
-                                Directory(_currentStoragePath!).parent;
+                            final parentDir = Directory(_currentPath!).parent;
                             final files = await parentDir.list().toList();
 
                             setState(() {
-                              _currentStoragePath = parentDir.path;
+                              _currentPath = parentDir.path;
                               _storageFiles = files;
                             });
                           },
@@ -538,6 +480,218 @@ class _FileManagerPageState extends State<FileManagerPage> {
         ],
       ),
     );
+  }
+
+  // Add these new helper methods for different views
+  Widget _buildListView() {
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: NeverScrollableScrollPhysics(),
+      itemCount: _storageFiles.length > 10 ? 10 : _storageFiles.length, // Limit to 10 files
+      separatorBuilder: (context, index) => Divider(height: 1),
+      itemBuilder: (context, index) {
+        final file = _storageFiles[index];
+        final fileName = file.path.split(Platform.pathSeparator).last;
+        final isDirectory = file is Directory;
+
+        return ListTile(
+          leading: Icon(
+            isDirectory ? Icons.folder : _getFileIcon(file.path),
+            color: isDirectory ? Colors.amber : Colors.blue,
+          ),
+          title: Text(fileName, overflow: TextOverflow.ellipsis),
+          subtitle: FutureBuilder<FileStat>(
+            future: file.stat(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return Text('Loading...');
+              }
+
+              final modified = DateFormat('MMM d, yyyy').format(snapshot.data!.modified);
+              final size = isDirectory ? 'Directory' : _formatFileSize(snapshot.data!.size);
+
+              return Text('$modified • $size');
+            },
+          ),
+          trailing: isDirectory
+              ? null
+              : IconButton(
+                  icon: Icon(Icons.open_in_new),
+                  onPressed: () async {
+                    try {
+                      await OpenFile.open(file.path);
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error opening file: $e')),
+                      );
+                    }
+                  },
+                  tooltip: 'Open',
+                ),
+          onTap: isDirectory
+              ? () async {
+                  // Navigate into the directory
+                  final dirPath = file.path;
+                  final dir = Directory(dirPath);
+                  final files = await dir.list().toList();
+
+                  setState(() {
+                    _currentStoragePath = dirPath;
+                    _storageFiles = files;
+                  });
+                }
+              : () async {
+                  try {
+                    await OpenFile.open(file.path);
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error opening file: $e')),
+                    );
+                  }
+                },
+        );
+      },
+    );
+  }
+
+  // Replace the existing _buildGridView method with this improved version
+  Widget _buildGridView() {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.all(8),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        childAspectRatio: 1.0,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+      ),
+      itemCount: _storageFiles.length > 12 ? 12 : _storageFiles.length,
+      itemBuilder: (context, index) {
+        final file = _storageFiles[index];
+        final fileName = file.path.split(Platform.pathSeparator).last;
+        final isDirectory = file is Directory;
+        
+        return GestureDetector(
+          onTap: isDirectory
+              ? () async {
+                  // Navigate into the directory
+                  final dirPath = file.path;
+                  final dir = Directory(dirPath);
+                  final files = await dir.list().toList();
+
+                  setState(() {
+                    _currentStoragePath = dirPath;
+                    _currentPath = dirPath;
+                    _storageFiles = files;
+                  });
+                }
+              : () async {
+                  try {
+                    await OpenFile.open(file.path);
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error opening file: $e')),
+                    );
+                  }
+                },
+          child: Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 5,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Container(
+                    padding: EdgeInsets.all(16),
+                    child: _isImageFile(file.path) && !isDirectory
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                            child: Image.file(
+                              File(file.path),
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Icon(
+                                  _getFileIcon(file.path),
+                                  size: 48,
+                                  color: isDirectory ? Colors.amber[700] : Colors.blue[700],
+                                );
+                              },
+                            ),
+                          )
+                        : Center(
+                            child: Icon(
+                              isDirectory ? Icons.folder : _getFileIcon(file.path),
+                              size: 48,
+                              color: isDirectory ? Colors.amber[700] : Colors.blue[700],
+                            ),
+                          ),
+                  ),
+                ),
+                Divider(height: 1, thickness: 1),
+                Expanded(
+                  flex: 2,
+                  child: Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          fileName,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        FutureBuilder<FileStat>(
+                          future: file.stat(),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData) {
+                              return Text(
+                                '...',
+                                style: TextStyle(fontSize: 11, color: Colors.grey),
+                              );
+                            }
+
+                            final size = isDirectory ? 'Directory' : _formatFileSize(snapshot.data!.size);
+
+                            return Text(
+                              size,
+                              style: TextStyle(fontSize: 11, color: Colors.grey),
+                              overflow: TextOverflow.ellipsis,
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Helper method to check if a file is an image
+  bool _isImageFile(String path) {
+    final ext = path.split('.').last.toLowerCase();
+    return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(ext);
   }
 
   // Add this method to your _FileManagerPageState class
@@ -801,22 +955,22 @@ class _FileManagerPageState extends State<FileManagerPage> {
               // Add the Storage Files section before Sources
               _buildStorageFilesSection(),
 
-              const SizedBox(height: 20),
-              Text(
-                'Sources',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              Column(
-                children:
-                    sources.map((source) => _buildSourceTile(source)).toList(),
-              ),
-              const SizedBox(height: 20),
-              // Add Connected Devices section
-              _buildConnectedDevicesSection(),
+              // const SizedBox(height: 20),
+              // Text(
+              //   'Sources',
+              //   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              // ),
+              // const SizedBox(height: 10),
+              // Column(
+              //   children:
+              //       sources.map((source) => _buildSourceTile(source)).toList(),
+              // ),
+              // const SizedBox(height: 20),
+              // // Add Connected Devices section
+              // _buildConnectedDevicesSection(),
 
-              // Add All Device Files section
-              _buildAllDeviceFilesSection(),
+              // // Add All Device Files section
+              // _buildAllDeviceFilesSection(),
             ],
           ),
         ),
@@ -1070,7 +1224,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
                               Icons.devices_other,
                               color: Colors.blue,
                             ),
-                            title: Text(device['name'] ?? 'Unknown Device'),
+                            title: Text(device['name'] ?? 'Unknown Device',
+                                style: TextStyle(fontWeight: FontWeight.bold)),
                             subtitle: Text('Device ID: ${device['id']}'),
                             trailing: ElevatedButton.icon(
                               icon: Icon(Icons.folder_open, size: 16),
@@ -1852,414 +2007,6 @@ class AudioScreen extends StatelessWidget {
             },
           );
         },
-      ),
-    );
-  }
-}
-
-class DocumentsScreen extends StatelessWidget {
-  const DocumentsScreen({super.key});
-
-  Future<List<FileSystemEntity>> _getDocumentFiles() async {
-    final storagePath = await StorageManager.getDefaultStoragePath();
-    final receivedDir = Directory('$storagePath/Received');
-    final List<FileSystemEntity> files = [];
-
-    Future<void> collectFiles(Directory dir) async {
-      if (await dir.exists()) {
-        files.addAll(
-          dir.listSync(recursive: true, followLinks: false).where((entity) {
-            final path = entity.path.toLowerCase();
-            return entity is File &&
-                (path.endsWith('.pdf') ||
-                    path.endsWith('.doc') ||
-                    path.endsWith('.docx') ||
-                    path.endsWith('.xls') ||
-                    path.endsWith('.xlsx') ||
-                    path.endsWith('.ppt') ||
-                    path.endsWith('.pptx') ||
-                    path.endsWith('.txt'));
-          }),
-        );
-      }
-    }
-
-    await collectFiles(Directory(storagePath));
-    await collectFiles(receivedDir);
-
-    return files;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Documents')),
-      body: FutureBuilder<List<FileSystemEntity>>(
-        future: _getDocumentFiles(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('No documents found.'));
-          }
-          final files = snapshot.data!;
-          return ListView.builder(
-            itemCount: files.length,
-            itemBuilder: (context, index) {
-              final file = files[index] as File;
-              final fileName = file.path.split(Platform.pathSeparator).last;
-              return ListTile(
-                leading: const Icon(Icons.insert_drive_file),
-                title: Text(fileName),
-                onTap: () {
-                  openFileByPath(file.path);
-                },
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-}
-
-class ApksScreen extends StatelessWidget {
-  const ApksScreen({super.key});
-
-  Future<List<FileSystemEntity>> _getApkFiles() async {
-    final storagePath = await StorageManager.getDefaultStoragePath();
-    final receivedDir = Directory('$storagePath/Received');
-    final List<FileSystemEntity> files = [];
-
-    Future<void> collectFiles(Directory dir) async {
-      if (await dir.exists()) {
-        files.addAll(
-          dir.listSync(recursive: true, followLinks: false).where((entity) {
-            final path = entity.path.toLowerCase();
-            return entity is File && path.endsWith('.apk');
-          }),
-        );
-      }
-    }
-
-    await collectFiles(Directory(storagePath));
-    await collectFiles(receivedDir);
-
-    return files;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('APKs')),
-      body: FutureBuilder<List<FileSystemEntity>>(
-        future: _getApkFiles(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('No APKs found.'));
-          }
-          final files = snapshot.data!;
-          return ListView.builder(
-            itemCount: files.length,
-            itemBuilder: (context, index) {
-              final file = files[index] as File;
-              final fileName = file.path.split(Platform.pathSeparator).last;
-              return ListTile(
-                leading: const Icon(Icons.android),
-                title: Text(fileName),
-                onTap: () {
-                  openFileByPath(file.path);
-                },
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-}
-
-class ArchivesScreen extends StatelessWidget {
-  const ArchivesScreen({super.key});
-
-  Future<List<FileSystemEntity>> _getArchiveFiles() async {
-    final storagePath = await StorageManager.getDefaultStoragePath();
-    final receivedDir = Directory('$storagePath/Received');
-    final List<FileSystemEntity> files = [];
-
-    Future<void> collectFiles(Directory dir) async {
-      if (await dir.exists()) {
-        files.addAll(
-          dir.listSync(recursive: true, followLinks: false).where((entity) {
-            final path = entity.path.toLowerCase();
-            return entity is File &&
-                (path.endsWith('.zip') ||
-                    path.endsWith('.rar') ||
-                    path.endsWith('.tar') ||
-                    path.endsWith('.gz') ||
-                    path.endsWith('.7z'));
-          }),
-        );
-      }
-    }
-
-    await collectFiles(Directory(storagePath));
-    await collectFiles(receivedDir);
-
-    return files;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Archives')),
-      body: FutureBuilder<List<FileSystemEntity>>(
-        future: _getArchiveFiles(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('No archives found.'));
-          }
-          final files = snapshot.data!;
-          return ListView.builder(
-            itemCount: files.length,
-            itemBuilder: (context, index) {
-              final file = files[index] as File;
-              final fileName = file.path.split(Platform.pathSeparator).last;
-              return ListTile(
-                leading: const Icon(Icons.archive),
-                title: Text(fileName),
-                onTap: () {
-                  openFileByPath(file.path);
-                },
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-}
-
-void openFileByPath(String path) {
-  OpenFile.open(path);
-}
-
-// Add this screen to show all files in a directory
-class StorageFilesScreen extends StatefulWidget {
-  final String initialPath;
-
-  const StorageFilesScreen({Key? key, required this.initialPath})
-    : super(key: key);
-
-  @override
-  State<StorageFilesScreen> createState() => _StorageFilesScreenState();
-}
-
-class _StorageFilesScreenState extends State<StorageFilesScreen> {
-  List<FileSystemEntity> _files = [];
-  String? _currentPath;
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadFiles(widget.initialPath);
-  }
-
-  Future<void> _loadFiles(String path) async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final directory = Directory(path);
-      if (await directory.exists()) {
-        final files = await directory.list().toList();
-        setState(() {
-          _currentPath = path;
-          _files = files;
-        });
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error loading files: $e')));
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  // Reuse the _getFileIcon and _formatFileSize methods from _FileManagerPageState
-
-  // Function to get file icon based on extension
-  IconData _getFileIcon(String path) {
-    final ext = path.split('.').last.toLowerCase();
-
-    if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(ext)) {
-      return Icons.image;
-    } else if (['mp4', 'avi', 'mov', 'wmv', 'flv', 'mkv'].contains(ext)) {
-      return Icons.video_file;
-    } else if (['mp3', 'wav', 'ogg', 'flac', 'm4a'].contains(ext)) {
-      return Icons.audio_file;
-    } else if (['pdf'].contains(ext)) {
-      return Icons.picture_as_pdf;
-    } else if (['doc', 'docx', 'txt', 'rtf'].contains(ext)) {
-      return Icons.description;
-    } else if (['xls', 'xlsx', 'csv'].contains(ext)) {
-      return Icons.table_chart;
-    } else if (['ppt', 'pptx'].contains(ext)) {
-      return Icons.slideshow;
-    } else if (['zip', 'rar', '7z', 'tar', 'gz'].contains(ext)) {
-      return Icons.folder_zip;
-    } else {
-      return Icons.insert_drive_file;
-    }
-  }
-
-  // Function to format file size
-  String _formatFileSize(num bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(2)} KB';
-    if (bytes < 1024 * 1024 * 1024)
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
-    if (bytes < 1024 * 1024 * 1024 * 1024)
-      return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
-    return '${(bytes / (1024 * 1024 * 1024 * 1024)).toStringAsFixed(2)} TB';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Storage Files'),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.refresh),
-            onPressed: () => _loadFiles(_currentPath!),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Text(
-              _currentPath ?? '',
-              style: TextStyle(fontFamily: 'monospace'),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          Expanded(
-            child:
-                _isLoading
-                    ? Center(child: CircularProgressIndicator())
-                    : _files.isEmpty
-                    ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.folder_open, size: 48, color: Colors.grey),
-                          SizedBox(height: 16),
-                          Text('No files found in this location'),
-                        ],
-                      ),
-                    )
-                    : ListView.separated(
-                      itemCount: _files.length,
-                      separatorBuilder: (context, index) => Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final file = _files[index];
-                        final fileName =
-                            file.path.split(Platform.pathSeparator).last;
-                        final isDirectory = file is Directory;
-
-                        return ListTile(
-                          leading: Icon(
-                            isDirectory
-                                ? Icons.folder
-                                : _getFileIcon(file.path),
-                            color: isDirectory ? Colors.amber : Colors.blue,
-                          ),
-                          title: Text(
-                            fileName,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: FutureBuilder<FileStat>(
-                            future: file.stat(),
-                            builder: (context, snapshot) {
-                              if (!snapshot.hasData) {
-                                return Text('Loading...');
-                              }
-
-                              final modified = DateFormat(
-                                'MMM d, yyyy',
-                              ).format(snapshot.data!.modified);
-
-                              final size =
-                                  isDirectory
-                                      ? 'Directory'
-                                      : _formatFileSize(snapshot.data!.size);
-
-                              return Text('$modified • $size');
-                            },
-                          ),
-                          trailing:
-                              isDirectory
-                                  ? null
-                                  : IconButton(
-                                    icon: Icon(Icons.open_in_new),
-                                    onPressed: () async {
-                                      try {
-                                        await OpenFile.open(file.path);
-                                      } catch (e) {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              'Error opening file: $e',
-                                            ),
-                                          ),
-                                        );
-                                      }
-                                    },
-                                    tooltip: 'Open',
-                                  ),
-                          onTap:
-                              isDirectory
-                                  ? () async {
-                                    // Navigate into the directory
-                                    _loadFiles(file.path);
-                                  }
-                                  : () async {
-                                    try {
-                                      await OpenFile.open(file.path);
-                                    } catch (e) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            'Error opening file: $e',
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                  },
-                        );
-                      },
-                    ),
-          ),
-        ],
       ),
     );
   }
