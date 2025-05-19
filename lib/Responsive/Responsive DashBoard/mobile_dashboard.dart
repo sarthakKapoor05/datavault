@@ -85,19 +85,43 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> getStorageInfo() async {
-    final storageInfo = StorageInfo();
-    final totalStorage = await storageInfo.getStorageTotalSpace();
-    final freeStorage = await storageInfo.getStorageFreeSpace();
-    final usedStorage = totalStorage - freeStorage;
+    try {
+      final storageInfo = StorageInfo();
+       totalStorage = await storageInfo.getStorageTotalSpace() ?? 0;
+      final freeStorage = await storageInfo.getStorageFreeSpace() ?? 0;
 
-    // Convert to GB
-    final usedGB = usedStorage / (1024 * 1024 * 1024);
-    final totalGB = totalStorage / (1024 * 1024 * 1024);
+      // Default to 0 if invalid values
+      if (totalStorage <= 0 || freeStorage < 0) {
+        setState(() {
+          usedStorage = 0;
+          totalStorage = 0;
+        });
+        return;
+      }
 
-    setState(() {
-      this.usedStorage = usedGB;
-      this.totalStorage = totalGB;
-    });
+      // Calculate storage in GB
+      final usedBytes = totalStorage - freeStorage;
+      final usedGB = (usedBytes / (1024 * 1024 * 1024)).clamp(
+        0.0,
+        double.maxFinite,
+      );
+      final totalGB = (totalStorage / (1024 * 1024 * 1024)).clamp(
+        0.0,
+        double.maxFinite,
+      );
+
+      setState(() {
+        this.usedStorage = usedGB;
+        this.totalStorage =
+            totalGB > 0 ? totalGB : 1; // Prevent division by zero
+      });
+    } catch (e) {
+      debugPrint('Error getting storage info: $e');
+      setState(() {
+        usedStorage = 0;
+        totalStorage = 1; // Set to 1 to prevent division by zero
+      });
+    }
   }
 
   @override
@@ -109,7 +133,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       backgroundColor: Theme.of(context).colorScheme.background,
       appBar: AppBar(
         title: Text(
-          'Files',
+          'M Files',
           style: TextStyle(
             color: Theme.of(context).colorScheme.secondary,
             fontSize: 24,
@@ -200,7 +224,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
                       ),
                       SizedBox(height: screenHeight * 0.01),
                       LinearProgressIndicator(
-                        value: usedStorage / totalStorage,
+                        value:
+                            totalStorage > 0
+                                ? (usedStorage / totalStorage).clamp(0.0, 1.0)
+                                : 0.0,
                         backgroundColor: Colors.grey[700],
                         color: Colors.green,
                         minHeight: 8,

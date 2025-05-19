@@ -24,7 +24,8 @@ class RemoteFileBrowserScreen extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  _RemoteFileBrowserScreenState createState() => _RemoteFileBrowserScreenState();
+  _RemoteFileBrowserScreenState createState() =>
+      _RemoteFileBrowserScreenState();
 }
 
 class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
@@ -36,7 +37,7 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
   String? _errorMessage;
   List<String> _pathHistory = [];
   bool _useTreeView = false;
-  
+
   @override
   void initState() {
     super.initState();
@@ -55,15 +56,18 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
       _errorMessage = null;
     });
 
-    final connectionService = Provider.of<ConnectionService>(context, listen: false);
-    
+    final connectionService = Provider.of<ConnectionService>(
+      context,
+      listen: false,
+    );
+
     try {
       final files = await connectionService.requestDirectoryListing(
-        widget.deviceId, 
+        widget.deviceId,
         '', // Root directory
         recursive: true, // Request all files recursively
       );
-      
+
       setState(() {
         _files = files;
         _buildFileTree(files);
@@ -76,49 +80,53 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
       });
     }
   }
-  
+
   void _buildFileTree(List<Map<String, dynamic>> files) {
     // Group files by parent directory
     final tree = <String, List<Map<String, dynamic>>>{};
-    
+
     for (final file in files) {
       final parentPath = file['parentPath'] ?? '';
-      
+
       if (!tree.containsKey(parentPath)) {
         tree[parentPath] = [];
       }
-      
+
       tree[parentPath]!.add(file);
     }
-    
+
     setState(() {
       _fileTree = Map.fromEntries(
-        tree.entries.map((entry) => 
-          MapEntry(entry.key, {'files': entry.value, 'expanded': false})
-        )
+        tree.entries.map(
+          (entry) =>
+              MapEntry(entry.key, {'files': entry.value, 'expanded': false}),
+        ),
       );
-      
+
       // Expand root by default
       if (_fileTree.containsKey('')) {
         _fileTree['']!['expanded'] = true;
       }
     });
   }
-  
+
   Future<void> _loadCurrentDirectory() async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
-    final connectionService = Provider.of<ConnectionService>(context, listen: false);
-    
+    final connectionService = Provider.of<ConnectionService>(
+      context,
+      listen: false,
+    );
+
     try {
       final files = await connectionService.requestDirectoryListing(
-        widget.deviceId, 
+        widget.deviceId,
         _currentPath,
       );
-      
+
       setState(() {
         _files = files;
         _isLoading = false;
@@ -139,7 +147,7 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
         _expandedFolders[path] = !(_expandedFolders[path] ?? false);
       });
     } else {
-      // Standard navigation 
+      // Standard navigation
       _pathHistory.add(_currentPath);
       final newPath = _currentPath.isEmpty ? dirName : '$_currentPath/$dirName';
       setState(() {
@@ -148,13 +156,13 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
       _loadCurrentDirectory();
     }
   }
-  
+
   void _goBack() {
     if (_pathHistory.isEmpty) {
       Navigator.of(context).pop();
       return;
     }
-    
+
     final previousPath = _pathHistory.removeLast();
     setState(() {
       _currentPath = previousPath;
@@ -166,7 +174,7 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
     setState(() {
       _useTreeView = !_useTreeView;
     });
-    
+
     if (_useTreeView) {
       _loadCompleteFileTree();
     } else {
@@ -175,21 +183,143 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
   }
 
   void _downloadFile(Map<String, dynamic> file) {
+    // Show file details dialog first
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Text('File Details'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ListTile(
+                  leading: Icon(_getFileIcon(file['name']), color: Colors.blue),
+                  title: Text(
+                    file['name'],
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  contentPadding: EdgeInsets.zero,
+                ),
+                Divider(),
+                _buildDetailRow('Type', _getFileType(file['name'])),
+                _buildDetailRow('Size', _formatFileSize(file['size'] ?? 0)),
+                _buildDetailRow(
+                  'Modified',
+                  _formatDate(file['modified'] ?? ''),
+                ),
+                _buildDetailRow('Path', file['path'] ?? ''),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _startFileDownload(file);
+                },
+                child: Text('Download'),
+              ),
+            ],
+          ),
+    );
+  }
+  
+Widget _buildDetailRow(String title, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(
+              '$title:',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
+          ),
+          Expanded(child: Text(value, style: TextStyle(color: Colors.black87))),
+        ],
+      ),
+    );
+  }
+
+String _getFileType(String fileName) {
+    final ext = fileName.split('.').last.toLowerCase();
+
+    final typeMap = {
+      'jpg': 'JPEG Image',
+      'jpeg': 'JPEG Image',
+      'png': 'PNG Image',
+      'gif': 'GIF Image',
+      'bmp': 'Bitmap Image',
+      'webp': 'WebP Image',
+      'mp4': 'MP4 Video',
+      'avi': 'AVI Video',
+      'mov': 'QuickTime Video',
+      'wmv': 'Windows Media Video',
+      'flv': 'Flash Video',
+      'mkv': 'Matroska Video',
+      'mp3': 'MP3 Audio',
+      'wav': 'WAV Audio',
+      'ogg': 'OGG Audio',
+      'flac': 'FLAC Audio',
+      'm4a': 'M4A Audio',
+      'pdf': 'PDF Document',
+      'doc': 'Word Document',
+      'docx': 'Word Document',
+      'txt': 'Text File',
+      'rtf': 'Rich Text File',
+      'xls': 'Excel Spreadsheet',
+      'xlsx': 'Excel Spreadsheet',
+      'csv': 'CSV File',
+      'zip': 'ZIP Archive',
+      'rar': 'RAR Archive',
+      '7z': '7-Zip Archive',
+      'tar': 'TAR Archive',
+      'gz': 'GZip Archive',
+      'apk': 'Android Package',
+    };
+
+    return typeMap[ext] ?? 'File';
+  }
+void _startFileDownload(Map<String, dynamic> file) {
     final connectionService = Provider.of<ConnectionService>(
       context,
       listen: false,
     );
 
     final filePath = file['path'];
+    final fileName = file['name'];
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Requesting file ${file['name']}...')),
+    // Show progress indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (context) => AlertDialog(
+            title: Text('Downloading'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                LinearProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Downloading $fileName'),
+              ],
+            ),
+          ),
     );
 
     connectionService.requestFile(
       widget.deviceId,
       filePath,
       onSuccess: (savedFile) {
+        // Close progress dialog
+        Navigator.pop(context);
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('File ${file['name']} downloaded'),
@@ -203,6 +333,9 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
         );
       },
       onError: (error) {
+        // Close progress dialog
+        Navigator.pop(context);
+
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error: $error')));
@@ -215,10 +348,7 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text("${widget.deviceName}'s Files"),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back),
-          onPressed: _goBack,
-        ),
+        leading: IconButton(icon: Icon(Icons.arrow_back), onPressed: _goBack),
         actions: [
           IconButton(
             icon: Icon(_useTreeView ? Icons.list : Icons.account_tree),
@@ -227,21 +357,23 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
           ),
           IconButton(
             icon: Icon(Icons.refresh),
-            onPressed: _useTreeView ? _loadCompleteFileTree : _loadCurrentDirectory,
+            onPressed:
+                _useTreeView ? _loadCompleteFileTree : _loadCurrentDirectory,
             tooltip: 'Refresh',
           ),
         ],
       ),
-      body: _isLoading
-          ? Center(child: CircularProgressIndicator())
-          : _errorMessage != null
+      body:
+          _isLoading
+              ? Center(child: CircularProgressIndicator())
+              : _errorMessage != null
               ? _buildErrorWidget()
               : _useTreeView
-                  ? _buildTreeView()
-                  : _buildListView(),
+              ? _buildTreeView()
+              : _buildListView(),
     );
   }
-  
+
   Widget _buildErrorWidget() {
     return Center(
       child: Padding(
@@ -251,13 +383,11 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
           children: [
             Icon(Icons.error_outline, size: 48, color: Colors.red),
             SizedBox(height: 16),
-            Text(
-              _errorMessage!,
-              textAlign: TextAlign.center,
-            ),
+            Text(_errorMessage!, textAlign: TextAlign.center),
             SizedBox(height: 24),
             ElevatedButton(
-              onPressed: _useTreeView ? _loadCompleteFileTree : _loadCurrentDirectory,
+              onPressed:
+                  _useTreeView ? _loadCompleteFileTree : _loadCurrentDirectory,
               child: Text('Retry'),
             ),
           ],
@@ -265,7 +395,7 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
       ),
     );
   }
-  
+
   Widget _buildListView() {
     if (_files.isEmpty) {
       return Center(
@@ -274,10 +404,7 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
           children: [
             Icon(Icons.folder_off, size: 64, color: Colors.grey[400]),
             SizedBox(height: 16),
-            Text(
-              'This folder is empty',
-              style: TextStyle(fontSize: 16),
-            ),
+            Text('This folder is empty', style: TextStyle(fontSize: 16)),
           ],
         ),
       );
@@ -300,8 +427,12 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
           child: Text(
             'Root',
             style: TextStyle(
-              color: _currentPath.isEmpty ? Theme.of(context).primaryColor : Colors.blue,
-              fontWeight: _currentPath.isEmpty ? FontWeight.bold : FontWeight.normal,
+              color:
+                  _currentPath.isEmpty
+                      ? Theme.of(context).primaryColor
+                      : Colors.blue,
+              fontWeight:
+                  _currentPath.isEmpty ? FontWeight.bold : FontWeight.normal,
             ),
           ),
         ),
@@ -311,16 +442,16 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
     if (_currentPath.isNotEmpty) {
       final parts = _currentPath.split('/');
       String currentPath = '';
-      
+
       for (int i = 0; i < parts.length; i++) {
         final part = parts[i];
         currentPath = currentPath.isEmpty ? part : '$currentPath/$part';
         final localPath = currentPath; // Capture for closure
-        
+
         breadcrumbs.add(
           Icon(Icons.chevron_right, size: 16, color: Colors.grey),
         );
-        
+
         breadcrumbs.add(
           InkWell(
             onTap: () {
@@ -337,12 +468,14 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
               child: Text(
                 part,
                 style: TextStyle(
-                  color: currentPath == _currentPath 
-                      ? Theme.of(context).primaryColor 
-                      : Colors.blue,
-                  fontWeight: currentPath == _currentPath 
-                      ? FontWeight.bold 
-                      : FontWeight.normal,
+                  color:
+                      currentPath == _currentPath
+                          ? Theme.of(context).primaryColor
+                          : Colors.blue,
+                  fontWeight:
+                      currentPath == _currentPath
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                 ),
               ),
             ),
@@ -362,9 +495,9 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
             child: Row(children: breadcrumbs),
           ),
         ),
-        
+
         Divider(height: 1),
-        
+
         // File listing
         Expanded(
           child: ListView.separated(
@@ -374,7 +507,7 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
               final file = _files[index];
               final isDir = file['isDirectory'] == true;
               final fileName = file['name'] ?? 'Unknown';
-              
+
               return ListTile(
                 leading: Icon(
                   isDir ? Icons.folder : _getFileIcon(fileName),
@@ -386,22 +519,24 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 subtitle: Text(
-                  isDir 
-                      ? 'Directory' 
+                  isDir
+                      ? 'Directory'
                       : '${_formatFileSize(file['size'] ?? 0)} • ${_formatDate(file['modified'])}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                trailing: isDir
-                    ? Icon(Icons.chevron_right)
-                    : IconButton(
-                        icon: Icon(Icons.download),
-                        tooltip: 'Download',
-                        onPressed: () => _downloadFile(file),
-                      ),
-                onTap: isDir
-                    ? () => _navigateToDirectory(fileName)
-                    : () => _downloadFile(file),
+                trailing:
+                    isDir
+                        ? Icon(Icons.chevron_right)
+                        : IconButton(
+                          icon: Icon(Icons.download),
+                          tooltip: 'Download',
+                          onPressed: () => _downloadFile(file),
+                        ),
+                onTap:
+                    isDir
+                        ? () => _navigateToDirectory(fileName)
+                        : () => _downloadFile(file),
               );
             },
           ),
@@ -409,7 +544,7 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
       ],
     );
   }
-  
+
   Widget _buildTreeView() {
     return ListView.builder(
       padding: EdgeInsets.all(8),
@@ -420,31 +555,32 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
       },
     );
   }
-  
+
   Widget _buildFileTreeItem(Map<String, dynamic> item, int depth) {
     final isDir = item['isDirectory'] == true;
     final path = item['path'] as String;
     final name = item['name'] as String;
     final expanded = _expandedFolders[path] ?? false;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         InkWell(
-          onTap: isDir 
-              ? () {
-                  setState(() {
-                    _expandedFolders[path] = !expanded;
-                  });
-                }
-              : () => _downloadFile(item),
+          onTap:
+              isDir
+                  ? () {
+                    setState(() {
+                      _expandedFolders[path] = !expanded;
+                    });
+                  }
+                  : () => _downloadFile(item),
           child: Padding(
             padding: EdgeInsets.only(left: depth * 24.0, top: 8, bottom: 8),
             child: Row(
               children: [
                 Icon(
-                  isDir 
-                      ? (expanded ? Icons.folder_open : Icons.folder) 
+                  isDir
+                      ? (expanded ? Icons.folder_open : Icons.folder)
                       : _getFileIcon(name),
                   color: isDir ? Colors.amber : Colors.blue,
                   size: 22,
@@ -458,14 +594,15 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
                         name,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontWeight: isDir ? FontWeight.bold : FontWeight.normal,
+                          fontWeight:
+                              isDir ? FontWeight.bold : FontWeight.normal,
                         ),
                       ),
                       if (!isDir)
                         Text(
                           _formatFileSize(item['size'] ?? 0),
                           style: TextStyle(
-                            fontSize: 12, 
+                            fontSize: 12,
                             color: Colors.grey[600],
                           ),
                         ),
@@ -481,18 +618,18 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
             ),
           ),
         ),
-        
+
         // Show children if this is an expanded directory
         if (isDir && expanded && _fileTree.containsKey(path))
           ..._buildChildrenItems(path, depth + 1),
       ],
     );
   }
-  
+
   List<Widget> _buildChildrenItems(String parentPath, int depth) {
     final children = _fileTree[parentPath]?['files'] ?? [];
     return List<Widget>.from(
-      children.map((child) => _buildFileTreeItem(child, depth))
+      children.map((child) => _buildFileTreeItem(child, depth)),
     );
   }
 
@@ -523,10 +660,11 @@ class _RemoteFileBrowserScreenState extends State<RemoteFileBrowserScreen> {
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    if (bytes < 1024 * 1024 * 1024)
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
-  
+
   String _formatDate(String? dateStr) {
     if (dateStr == null) return '';
     try {
