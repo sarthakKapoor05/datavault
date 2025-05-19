@@ -102,6 +102,21 @@ class _FileManagerPageState extends State<FileManagerPage> {
   // Add this field to _FileManagerPageState
   StreamSubscription? _permissionRequestSubscription;
 
+  // Add these variables to your _FileManagerPageState class
+  final TextEditingController _searchController = TextEditingController();
+  List<FileSystemEntity> _searchResults = [];
+  bool _isSearching = false;
+
+  // Add this to track expanded/collapsed state of sections
+  Map<String, bool> _expandedSections = {
+    'storage': true,
+    'categories': true,
+    'files': true,
+    'sources': true,
+    'devices': true,
+    'shared': true,
+  };
+
   @override
   void initState() {
     super.initState();
@@ -110,15 +125,22 @@ class _FileManagerPageState extends State<FileManagerPage> {
     _calculateFolderUsage(); // Add this
 
     // Listen for file access permission requests
-    _permissionRequestSubscription = eventBus.on<FileAccessRequestEvent>().listen((event) {
-      _showPermissionRequestDialog(context, event.requesterId, event.requesterName);
-    });
+    _permissionRequestSubscription = eventBus
+        .on<FileAccessRequestEvent>()
+        .listen((event) {
+          _showPermissionRequestDialog(
+            context,
+            event.requesterId,
+            event.requesterName,
+          );
+        });
   }
 
   // Calculate the total and used size of the selected storage folder
   Future<void> _calculateFolderUsage() async {
     try {
       final storagePath = await StorageManager.getDefaultStoragePath();
+      final maxStorageBytes = await StorageManager.getMaxStorageSize();
       final directory = Directory(storagePath);
 
       int totalBytes = 0;
@@ -137,17 +159,16 @@ class _FileManagerPageState extends State<FileManagerPage> {
       }
 
       setState(() {
-        usedStorage =
-            totalBytes / (1024 * 1024 * 1024); // (keep for progress bar)
-        totalStorage = usedStorage; // (keep for progress bar)
         usedStorageBytes = totalBytes;
-        totalStorageBytes = totalBytes;
+        totalStorageBytes = maxStorageBytes; // Use the configured max size
+        usedStorage = totalBytes / (1024 * 1024 * 1024); // Convert to GB
+        totalStorage = maxStorageBytes / (1024 * 1024 * 1024); // Convert to GB
       });
     } catch (e) {
       print('Error calculating folder usage: $e');
       setState(() {
         usedStorage = 0;
-        totalStorage = 0;
+        totalStorage = 1; // Default to 1 GB
       });
     }
   }
@@ -235,6 +256,46 @@ class _FileManagerPageState extends State<FileManagerPage> {
     }
   }
 
+  // Method to search files in default storage
+  Future<void> _searchFiles(String query) async {
+    if (query.trim().isEmpty) {
+      setState(() {
+        _isSearching = false;
+        _searchResults = [];
+      });
+      return;
+    }
+
+    setState(() {
+      _isSearching = true;
+    });
+
+    try {
+      final storagePath = await StorageManager.getDefaultStoragePath();
+      final directory = Directory(storagePath);
+      List<FileSystemEntity> results = [];
+
+      if (await directory.exists()) {
+        await for (var entity in directory.list(recursive: true)) {
+          final fileName = entity.path.split(Platform.pathSeparator).last;
+          if (fileName.toLowerCase().contains(query.toLowerCase())) {
+            results.add(entity);
+          }
+        }
+
+        setState(() {
+          _searchResults = results;
+        });
+      }
+    } catch (e) {
+      print('Error searching files: $e');
+    } finally {
+      setState(() {
+        _isSearching = false;
+      });
+    }
+  }
+
   // Function to get file icon based on extension
   IconData _getFileIcon(String path) {
     final ext = path.split('.').last.toLowerCase();
@@ -282,116 +343,138 @@ class _FileManagerPageState extends State<FileManagerPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Files in Default Storage',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              Row(
-                children: [
-                  TextButton.icon(
-                    icon: Icon(Icons.settings),
-                    label: Text('Change'),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const SettingsScreen(),
-                        ),
-                      ).then(
-                        (_) => _loadStorageFiles(),
-                      ); // Reload files when returning from settings
-                    },
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.refresh),
-                    onPressed: _loadStorageFiles,
-                    tooltip: 'Refresh',
-                  ),
-                ],
-              ),
-            ],
-          ),
-          if (_currentStoragePath != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Text(
-                _currentStoragePath!,
-                style: TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 12,
-                  color: Colors.grey,
+          _buildSectionHeader(
+            'Files in Default Storage',
+            'files',
+            Row(
+              children: [
+                TextButton.icon(
+                  icon: Icon(Icons.settings),
+                  label: Text('Change'),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const SettingsScreen(),
+                      ),
+                    ).then((_) => _loadStorageFiles());
+                  },
                 ),
-                overflow: TextOverflow.ellipsis,
-              ),
+                IconButton(
+                  icon: Icon(Icons.refresh),
+                  onPressed: _loadStorageFiles,
+                  tooltip: 'Refresh',
+                ),
+              ],
             ),
-          if (_isLoadingStorageFiles)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32.0),
-                child: CircularProgressIndicator(),
-              ),
-            )
-          else if (_storageFiles.isEmpty)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32.0),
-                child: Column(
-                  children: [
-                    Icon(Icons.folder_open, size: 48, color: Colors.grey),
-                    SizedBox(height: 16),
-                    Text('No files found in default storage location'),
-                  ],
+          ),
+
+          if (_expandedSections['files'] ?? true) ...[
+            if (_currentStoragePath != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(
+                  _currentStoragePath!,
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    color: Colors.grey,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-            )
-          else
-            ListView.separated(
-              shrinkWrap: true,
-              physics: NeverScrollableScrollPhysics(),
-              itemCount:
-                  _storageFiles.length > 10
-                      ? 10
-                      : _storageFiles.length, // Limit to 10 files
-              separatorBuilder: (context, index) => Divider(height: 1),
-              itemBuilder: (context, index) {
-                final file = _storageFiles[index];
-                final fileName = file.path.split(Platform.pathSeparator).last;
-                final isDirectory = file is Directory;
 
-                return ListTile(
-                  leading: Icon(
-                    isDirectory ? Icons.folder : _getFileIcon(file.path),
-                    color: isDirectory ? Colors.amber : Colors.blue,
+            if (_isLoadingStorageFiles)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32.0),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (_storageFiles.isEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32.0),
+                  child: Column(
+                    children: [
+                      Icon(Icons.folder_open, size: 48, color: Colors.grey),
+                      SizedBox(height: 16),
+                      Text('No files found in default storage location'),
+                    ],
                   ),
-                  title: Text(fileName, overflow: TextOverflow.ellipsis),
-                  subtitle: FutureBuilder<FileStat>(
-                    future: file.stat(),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData) {
-                        return Text('Loading...');
-                      }
+                ),
+              )
+            else
+              ListView.separated(
+                shrinkWrap: true,
+                physics: NeverScrollableScrollPhysics(),
+                itemCount:
+                    _storageFiles.length > 10
+                        ? 10
+                        : _storageFiles.length, // Limit to 10 files
+                separatorBuilder: (context, index) => Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final file = _storageFiles[index];
+                  final fileName = file.path.split(Platform.pathSeparator).last;
+                  final isDirectory = file is Directory;
 
-                      final modified = DateFormat(
-                        'MMM d, yyyy',
-                      ).format(snapshot.data!.modified);
+                  return ListTile(
+                    leading: Icon(
+                      isDirectory ? Icons.folder : _getFileIcon(file.path),
+                      color: isDirectory ? Colors.amber : Colors.blue,
+                    ),
+                    title: Text(fileName, overflow: TextOverflow.ellipsis),
+                    subtitle: FutureBuilder<FileStat>(
+                      future: file.stat(),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) {
+                          return Text('Loading...');
+                        }
 
-                      final size =
-                          isDirectory
-                              ? 'Directory'
-                              : _formatFileSize(snapshot.data!.size);
+                        final modified = DateFormat(
+                          'MMM d, yyyy',
+                        ).format(snapshot.data!.modified);
 
-                      return Text('$modified • $size');
-                    },
-                  ),
-                  trailing:
-                      isDirectory
-                          ? null
-                          : IconButton(
-                            icon: Icon(Icons.open_in_new),
-                            onPressed: () async {
+                        final size =
+                            isDirectory
+                                ? 'Directory'
+                                : _formatFileSize(snapshot.data!.size);
+
+                        return Text('$modified • $size');
+                      },
+                    ),
+                    trailing:
+                        isDirectory
+                            ? null
+                            : IconButton(
+                              icon: Icon(Icons.open_in_new),
+                              onPressed: () async {
+                                try {
+                                  await OpenFile.open(file.path);
+                                } catch (e) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Error opening file: $e'),
+                                    ),
+                                  );
+                                }
+                              },
+                              tooltip: 'Open',
+                            ),
+                    onTap:
+                        isDirectory
+                            ? () async {
+                              // Navigate into the directory
+                              final dirPath = file.path;
+                              final dir = Directory(dirPath);
+                              final files = await dir.list().toList();
+
+                              setState(() {
+                                _currentStoragePath = dirPath;
+                                _storageFiles = files;
+                              });
+                            }
+                            : () async {
                               try {
                                 await OpenFile.open(file.path);
                               } catch (e) {
@@ -402,89 +485,97 @@ class _FileManagerPageState extends State<FileManagerPage> {
                                 );
                               }
                             },
-                            tooltip: 'Open',
-                          ),
-                  onTap:
-                      isDirectory
-                          ? () async {
-                            // Navigate into the directory
-                            final dirPath = file.path;
-                            final dir = Directory(dirPath);
-                            final files = await dir.list().toList();
-
-                            setState(() {
-                              _currentStoragePath = dirPath;
-                              _storageFiles = files;
-                            });
-                          }
-                          : () async {
-                            try {
-                              await OpenFile.open(file.path);
-                            } catch (e) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Error opening file: $e'),
-                                ),
-                              );
-                            }
-                          },
-                );
-              },
-            ),
-          if (_storageFiles.length > 10) // If we have more than 10 files
-            Padding(
-              padding: const EdgeInsets.only(top: 16.0),
-              child: Center(
-                child: TextButton.icon(
-                  icon: Icon(Icons.more_horiz),
-                  label: Text('View All (${_storageFiles.length} files)'),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder:
-                            (context) => StorageFilesScreen(
-                              initialPath: _currentStoragePath!,
-                            ),
-                      ),
-                    );
-                  },
+                  );
+                },
+              ),
+            if (_storageFiles.length > 10) // If we have more than 10 files
+              Padding(
+                padding: const EdgeInsets.only(top: 16.0),
+                child: Center(
+                  child: TextButton.icon(
+                    icon: Icon(Icons.more_horiz),
+                    label: Text('View All (${_storageFiles.length} files)'),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder:
+                              (context) => StorageFilesScreen(
+                                initialPath: _currentStoragePath!,
+                              ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
-            ),
-          if (_currentStoragePath != null)
-            FutureBuilder<String>(
-              future: StorageManager.getDefaultStoragePath(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return SizedBox.shrink();
-                }
-                if (_currentStoragePath != snapshot.data) {
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 16),
-                    child: Center(
-                      child: TextButton.icon(
-                        icon: Icon(Icons.arrow_upward),
-                        label: Text('Go to Parent Directory'),
-                        onPressed: () async {
-                          final parentDir =
-                              Directory(_currentStoragePath!).parent;
-                          final files = await parentDir.list().toList();
+            if (_currentStoragePath != null)
+              FutureBuilder<String>(
+                future: StorageManager.getDefaultStoragePath(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return SizedBox.shrink();
+                  }
+                  if (_currentStoragePath != snapshot.data) {
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 16),
+                      child: Center(
+                        child: TextButton.icon(
+                          icon: Icon(Icons.arrow_upward),
+                          label: Text('Go to Parent Directory'),
+                          onPressed: () async {
+                            final parentDir =
+                                Directory(_currentStoragePath!).parent;
+                            final files = await parentDir.list().toList();
 
-                          setState(() {
-                            _currentStoragePath = parentDir.path;
-                            _storageFiles = files;
-                          });
-                        },
+                            setState(() {
+                              _currentStoragePath = parentDir.path;
+                              _storageFiles = files;
+                            });
+                          },
+                        ),
                       ),
-                    ),
-                  );
-                }
-                return SizedBox.shrink();
-              },
-            ),
+                    );
+                  }
+                  return SizedBox.shrink();
+                },
+              ),
+          ],
         ],
       ),
+    );
+  }
+
+  // Add this method to your _FileManagerPageState class
+  Widget _buildSectionHeader(
+    String title,
+    String sectionKey, [
+    Widget? trailing,
+  ]) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          title,
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        Row(
+          children: [
+            if (trailing != null) trailing,
+            IconButton(
+              icon: Icon(
+                _expandedSections[sectionKey] ?? true
+                    ? Icons.keyboard_arrow_up
+                    : Icons.keyboard_arrow_down,
+                size: 24,
+              ),
+              onPressed: () => _toggleSectionExpansion(sectionKey),
+              tooltip:
+                  _expandedSections[sectionKey] ?? true ? 'Collapse' : 'Expand',
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -503,30 +594,33 @@ class _FileManagerPageState extends State<FileManagerPage> {
             builder: (context, connectionService, child) {
               return Padding(
                 padding: const EdgeInsets.all(8.0),
-                child: connectionService.isConnected
-                    ? Row(
-                        children: [
-                          Icon(Icons.wifi, color: Colors.green),
-                          SizedBox(width: 8),
-                          Text('Connected'),
-                        ],
-                      )
-                    : TextButton.icon(
-                        icon: Icon(Icons.wifi_off, color: Colors.red),
-                        label: Text('Connect'),
-                        onPressed: () async {
-                          try {
-                            await connectionService.connect('192.168.18.226');
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Connected to server')),
-                            );
-                          } catch (e) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Failed to connect: $e')),
-                            );
-                          }
-                        },
-                      ),
+                child:
+                    connectionService.isConnected
+                        ? Row(
+                          children: [
+                            Icon(Icons.wifi, color: Colors.green),
+                            SizedBox(width: 8),
+                            Text('Connected'),
+                          ],
+                        )
+                        : TextButton.icon(
+                          icon: Icon(Icons.wifi_off, color: Colors.red),
+                          label: Text('Connect'),
+                          onPressed: () async {
+                            try {
+                              await connectionService.connect('192.168.18.226');
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Connected to server')),
+                              );
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Failed to connect: $e'),
+                                ),
+                              );
+                            }
+                          },
+                        ),
               );
             },
           ),
@@ -563,29 +657,36 @@ class _FileManagerPageState extends State<FileManagerPage> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: TextField(
-                          readOnly: !isTextFieldEditable,
+                          controller: _searchController,
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.secondary,
                           ),
                           cursorColor: Theme.of(context).colorScheme.secondary,
                           decoration: InputDecoration(
-                            hintText: 'Search files, folders... djfgjh',
+                            hintText: 'Search files in storage...',
                             hintStyle: TextStyle(
-                              color: Theme.of(context).colorScheme.secondary,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.secondary.withOpacity(0.7),
                             ),
                             border: InputBorder.none,
                           ),
                           onChanged: (value) {
-                            // 🔍 You can implement real-time filtering here if needed
-                          },
-                          onTap: () {
-                            setState(() {
-                              isTextFieldEditable =
-                                  true; // Enable editing on tap
-                            });
+                            _searchFiles(value);
                           },
                         ),
                       ),
+                      if (_searchController.text.isNotEmpty)
+                        IconButton(
+                          icon: Icon(
+                            Icons.clear,
+                            color: Theme.of(context).colorScheme.secondary,
+                          ),
+                          onPressed: () {
+                            _searchController.clear();
+                            _searchFiles("");
+                          },
+                        ),
                     ],
                   ),
                 ),
@@ -622,6 +723,18 @@ class _FileManagerPageState extends State<FileManagerPage> {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
+                          // Add a settings button to quickly access storage limit settings
+                          IconButton(
+                            icon: Icon(Icons.settings),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const SettingsScreen(),
+                                ),
+                              ).then((_) => _calculateFolderUsage());
+                            },
+                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -629,28 +742,65 @@ class _FileManagerPageState extends State<FileManagerPage> {
                         value:
                             totalStorage == 0 ? 0 : usedStorage / totalStorage,
                         backgroundColor: Colors.grey[700],
-                        color: Colors.green,
+                        color:
+                            usedStorage / totalStorage > 0.9
+                                ? Colors.red
+                                : usedStorage / totalStorage > 0.75
+                                ? Colors.orange
+                                : Colors.green,
                         minHeight: 8,
                         borderRadius: BorderRadius.circular(8),
+                      ),
+                      if (usedStorage / totalStorage > 0.9)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Row(
+                            children: [
+                              Icon(Icons.warning, color: Colors.red, size: 16),
+                              SizedBox(width: 8),
+                              Text(
+                                'Storage almost full',
+                                style: TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          'Used: ${_formatFileSize(usedStorageBytes)} of ${_formatFileSize(totalStorageBytes)}',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
               const SizedBox(height: 20),
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: categories.length,
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 200,
-                  mainAxisSpacing: 16,
-                  crossAxisSpacing: 16,
-                  childAspectRatio: 1,
-                ),
-                itemBuilder: (context, index) {
-                  return _buildCategoryCard(context, categories[index]);
-                },
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildSectionHeader('Categories', 'categories'),
+                  if (_expandedSections['categories'] ?? true)
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: categories.length,
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 200,
+                            mainAxisSpacing: 16,
+                            crossAxisSpacing: 16,
+                            childAspectRatio: 1,
+                          ),
+                      itemBuilder: (context, index) {
+                        return _buildCategoryCard(context, categories[index]);
+                      },
+                    ),
+                ],
               ),
 
               const SizedBox(height: 20),
@@ -670,8 +820,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
               const SizedBox(height: 20),
               // Add Connected Devices section
               _buildConnectedDevicesSection(),
-              
-              // Add All Device Files section 
+
+              // Add All Device Files section
               _buildAllDeviceFilesSection(),
             ],
           ),
@@ -736,6 +886,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
         child: const Icon(Icons.folder, color: Colors.white),
       ),
     );
+  }
+
+  // Method to toggle section expansion
+  void _toggleSectionExpansion(String section) {
+    setState(() {
+      _expandedSections[section] = !(_expandedSections[section] ?? true);
+    });
   }
 
   Widget _buildCategoryCard(
@@ -868,28 +1025,28 @@ class _FileManagerPageState extends State<FileManagerPage> {
                     'Connected Devices',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                  connectionService.isConnected 
-                    ? TextButton.icon(
+                  connectionService.isConnected
+                      ? TextButton.icon(
                         icon: Icon(Icons.refresh),
                         label: Text('Refresh'),
                         onPressed: () {
                           connectionService.channel?.sink.add(
-                            jsonEncode({"type": "get_connected_devices"})
+                            jsonEncode({"type": "get_connected_devices"}),
                           );
                         },
                       )
-                    : TextButton.icon(
+                      : TextButton.icon(
                         icon: Icon(Icons.wifi),
                         label: Text('Connect'),
                         onPressed: () async {
                           try {
                             await connectionService.connect('192.168.18.226');
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Connected to server'))
+                              SnackBar(content: Text('Connected to server')),
                             );
                           } catch (e) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Failed to connect: $e'))
+                              SnackBar(content: Text('Failed to connect: $e')),
                             );
                           }
                         },
@@ -897,53 +1054,62 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 ],
               ),
               SizedBox(height: 16),
-              
+
               connectionService.isConnected
-                ? connectionService.connectedClients.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32.0),
-                        child: Column(
-                          children: [
-                            Icon(Icons.devices, size: 48, color: Colors.grey),
-                            SizedBox(height: 16),
-                            Text('No devices found nearby'),
-                          ],
-                        ),
-                      ),
-                    )
-                  : ListView.separated(
-                      shrinkWrap: true,
-                      physics: NeverScrollableScrollPhysics(),
-                      itemCount: connectionService.connectedClients.length,
-                      separatorBuilder: (context, index) => Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final device = connectionService.connectedClients[index];
-                        
-                        // Don't show own device
-                        if (device['id'] == connectionService.deviceId) {
-                          return SizedBox.shrink();
-                        }
-                        
-                        return ListTile(
-                          leading: Icon(Icons.devices_other, color: Colors.blue),
-                          title: Text(device['name'] ?? 'Unknown Device'),
-                          subtitle: Text('Device ID: ${device['id']}'),
-                          trailing: ElevatedButton.icon(
-                            icon: Icon(Icons.folder_open, size: 16),
-                            label: Text('Browse'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue,
-                              foregroundColor: Colors.white,
-                            ),
-                            onPressed: () {
-                              _showRemoteFileBrowser(context, device['id'], device['name']);
-                            },
+                  ? connectionService.connectedClients.isEmpty
+                      ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32.0),
+                          child: Column(
+                            children: [
+                              Icon(Icons.devices, size: 48, color: Colors.grey),
+                              SizedBox(height: 16),
+                              Text('No devices found nearby'),
+                            ],
                           ),
-                        );
-                      },
-                    )
-                : Center(
+                        ),
+                      )
+                      : ListView.separated(
+                        shrinkWrap: true,
+                        physics: NeverScrollableScrollPhysics(),
+                        itemCount: connectionService.connectedClients.length,
+                        separatorBuilder:
+                            (context, index) => Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final device =
+                              connectionService.connectedClients[index];
+
+                          // Don't show own device
+                          if (device['id'] == connectionService.deviceId) {
+                            return SizedBox.shrink();
+                          }
+
+                          return ListTile(
+                            leading: Icon(
+                              Icons.devices_other,
+                              color: Colors.blue,
+                            ),
+                            title: Text(device['name'] ?? 'Unknown Device'),
+                            subtitle: Text('Device ID: ${device['id']}'),
+                            trailing: ElevatedButton.icon(
+                              icon: Icon(Icons.folder_open, size: 16),
+                              label: Text('Browse'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white,
+                              ),
+                              onPressed: () {
+                                _showRemoteFileBrowser(
+                                  context,
+                                  device['id'],
+                                  device['name'],
+                                );
+                              },
+                            ),
+                          );
+                        },
+                      )
+                  : Center(
                     child: Padding(
                       padding: const EdgeInsets.all(32.0),
                       child: Column(
@@ -957,13 +1123,19 @@ class _FileManagerPageState extends State<FileManagerPage> {
                             label: Text('Connect'),
                             onPressed: () async {
                               try {
-                                await connectionService.connect('192.168.18.226');
+                                await connectionService.connect(
+                                  '192.168.18.226',
+                                );
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Connected to server'))
+                                  SnackBar(
+                                    content: Text('Connected to server'),
+                                  ),
                                 );
                               } catch (e) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Failed to connect: $e'))
+                                  SnackBar(
+                                    content: Text('Failed to connect: $e'),
+                                  ),
                                 );
                               }
                             },
@@ -975,55 +1147,63 @@ class _FileManagerPageState extends State<FileManagerPage> {
             ],
           ),
         );
-      }
+      },
     );
   }
 
   // Add this method to show remote file browser
-  void _showRemoteFileBrowser(BuildContext context, String deviceId, String deviceName) {
-    final connectionService = Provider.of<ConnectionService>(context, listen: false);
-    
+  void _showRemoteFileBrowser(
+    BuildContext context,
+    String deviceId,
+    String deviceName,
+  ) {
+    final connectionService = Provider.of<ConnectionService>(
+      context,
+      listen: false,
+    );
+
     // Check if we already have permission
     if (connectionService.hasPermissionForDevice(deviceId)) {
       // Show loading dialog and proceed with file request
       _requestRemoteFilesList(deviceId, deviceName);
       return;
     }
-    
+
     // If not, show requesting access dialog
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text('Requesting Access'),
-        content: Row(
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(width: 16),
-            Expanded(
-              child: Text('Requesting file access from $deviceName...'),
+      builder:
+          (context) => AlertDialog(
+            title: Text('Requesting Access'),
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 16),
+                Expanded(
+                  child: Text('Requesting file access from $deviceName...'),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
     );
-    
+
     // Request permission
     connectionService.requestFileAccess(deviceId);
-    
+
     // First declare the subscription variable
     StreamSubscription? subscription;
-    
+
     // Then assign it in a separate statement
     subscription = eventBus.on<FileAccessGrantedEvent>().listen((event) {
       if (event.deviceId == deviceId) {
         // Permission granted, close dialog and show file browser
         Navigator.of(context, rootNavigator: true).pop();
         _requestRemoteFilesList(deviceId, deviceName);
-        subscription?.cancel();  // Now this works correctly
+        subscription?.cancel(); // Now this works correctly
       }
     });
-    
+
     // Also listen for denial
     StreamSubscription? denialSubscription;
     denialSubscription = eventBus.on<FileAccessDeniedEvent>().listen((event) {
@@ -1031,12 +1211,12 @@ class _FileManagerPageState extends State<FileManagerPage> {
         // Permission denied, show message
         Navigator.of(context, rootNavigator: true).pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$deviceName denied file access request'))
+          SnackBar(content: Text('$deviceName denied file access request')),
         );
-        denialSubscription?.cancel();  // Now this works correctly
+        denialSubscription?.cancel(); // Now this works correctly
       }
     });
-    
+
     // Set timeout
     Future.delayed(Duration(seconds: 15), () {
       subscription?.cancel();
@@ -1044,7 +1224,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       if (Navigator.of(context, rootNavigator: true).canPop()) {
         Navigator.of(context, rootNavigator: true).pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Request timed out. Please try again.'))
+          SnackBar(content: Text('Request timed out. Please try again.')),
         );
       }
     });
@@ -1052,39 +1232,44 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   // Helper method to request files after permission is granted
   void _requestRemoteFilesList(String deviceId, String deviceName) {
-    final connectionService = Provider.of<ConnectionService>(context, listen: false);
-    
+    final connectionService = Provider.of<ConnectionService>(
+      context,
+      listen: false,
+    );
+
     // Declare the subscription variable first
     StreamSubscription? subscription;
-    
+
     // Then assign it separately
     subscription = connectionService.broadcastStream?.listen((message) {
       if (message is String) {
         try {
           final data = jsonDecode(message);
-          
-          if (data['type'] == 'file_list_response' && 
+
+          if (data['type'] == 'file_list_response' &&
               data['requesterId'] == connectionService.deviceId &&
               data['sourceId'] == deviceId) {
-            
             // Close loading dialog
             Navigator.of(context, rootNavigator: true).pop();
-            
+
             // Navigate to RemoteFilesScreen
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => RemoteFilesScreen(
-                  deviceId: deviceId,
-                  deviceName: deviceName,
-                  initialFiles: List<Map<String, dynamic>>.from(
-                    data['files'].map((file) => Map<String, dynamic>.from(file))
-                  ),
-                  initialPath: data['sourcePath'] ?? '',
-                ),
+                builder:
+                    (context) => RemoteFilesScreen(
+                      deviceId: deviceId,
+                      deviceName: deviceName,
+                      initialFiles: List<Map<String, dynamic>>.from(
+                        data['files'].map(
+                          (file) => Map<String, dynamic>.from(file),
+                        ),
+                      ),
+                      initialPath: data['sourcePath'] ?? '',
+                    ),
               ),
             );
-            
+
             // Now you can cancel the subscription after first response
             subscription?.cancel();
           }
@@ -1093,78 +1278,91 @@ class _FileManagerPageState extends State<FileManagerPage> {
         }
       }
     });
-    
+
     // Show loading dialog
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text('Loading Files'),
-        content: Row(
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(width: 16),
-            Text('Loading files from $deviceName...'),
-          ],
-        ),
-      ),
+      builder:
+          (context) => AlertDialog(
+            title: Text('Loading Files'),
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 16),
+                Text('Loading files from $deviceName...'),
+              ],
+            ),
+          ),
     );
-    
+
     // Request file list
     connectionService.requestRemoteFileList(deviceId);
   }
 
   // Add to desktop_dashboard.dart
-  void _showPermissionRequestDialog(BuildContext context, String requesterId, String requesterName) {
+  void _showPermissionRequestDialog(
+    BuildContext context,
+    String requesterId,
+    String requesterName,
+  ) {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text('File Access Request'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.folder_shared, size: 48, color: Colors.blue),
-            SizedBox(height: 16),
-            Text('$requesterName wants to access your files', textAlign: TextAlign.center),
-            SizedBox(height: 8),
-            Text(
-              'If you approve, they will be able to browse and download your files.',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-              textAlign: TextAlign.center,
+      builder:
+          (context) => AlertDialog(
+            title: Text('File Access Request'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.folder_shared, size: 48, color: Colors.blue),
+                SizedBox(height: 16),
+                Text(
+                  '$requesterName wants to access your files',
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'If you approve, they will be able to browse and download your files.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            child: Text('Deny'),
-            onPressed: () {
-              // Deny access
-              final connectionService = Provider.of<ConnectionService>(context, listen: false);
-              connectionService.denyPermissionTo(requesterId);
-              Navigator.pop(context);
-            },
+            actions: [
+              TextButton(
+                child: Text('Deny'),
+                onPressed: () {
+                  // Deny access
+                  final connectionService = Provider.of<ConnectionService>(
+                    context,
+                    listen: false,
+                  );
+                  connectionService.denyPermissionTo(requesterId);
+                  Navigator.pop(context);
+                },
+              ),
+              ElevatedButton(
+                child: Text('Allow'),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                onPressed: () {
+                  // Grant access
+                  final connectionService = Provider.of<ConnectionService>(
+                    context,
+                    listen: false,
+                  );
+                  connectionService.grantPermissionTo(requesterId);
+                  Navigator.pop(context);
+                },
+              ),
+            ],
           ),
-          ElevatedButton(
-            child: Text('Allow'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-            ),
-            onPressed: () {
-              // Grant access
-              final connectionService = Provider.of<ConnectionService>(context, listen: false);
-              connectionService.grantPermissionTo(requesterId);
-              Navigator.pop(context);
-            },
-          ),
-        ],
-      ),
     );
   }
 
   @override
   void dispose() {
-    // Cancel the permission request subscription
+    _searchController.dispose();
     _permissionRequestSubscription?.cancel();
     super.dispose();
   }
@@ -1174,11 +1372,11 @@ class _FileManagerPageState extends State<FileManagerPage> {
     return Consumer<ConnectionService>(
       builder: (context, connectionService, child) {
         final deviceFiles = connectionService.deviceFiles;
-        
+
         if (!connectionService.isConnected) {
           return SizedBox.shrink();
         }
-        
+
         if (deviceFiles.isEmpty) {
           return Container(
             padding: const EdgeInsets.all(16),
@@ -1210,7 +1408,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
             ),
           );
         }
-        
+
         return Container(
           padding: const EdgeInsets.all(16),
           margin: const EdgeInsets.only(top: 20),
@@ -1233,14 +1431,14 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 itemBuilder: (context, index) {
                   final deviceId = deviceFiles.keys.elementAt(index);
                   final deviceData = deviceFiles[deviceId]!;
-                  
+
                   // Don't show own device
                   if (deviceId == connectionService.deviceId) {
                     return SizedBox.shrink();
                   }
-                  
+
                   return _buildDeviceFilesCard(deviceId, deviceData);
-                }
+                },
               ),
             ],
           ),
@@ -1249,13 +1447,16 @@ class _FileManagerPageState extends State<FileManagerPage> {
     );
   }
 
-  Widget _buildDeviceFilesCard(String deviceId, Map<String, dynamic> deviceData) {
+  Widget _buildDeviceFilesCard(
+    String deviceId,
+    Map<String, dynamic> deviceData,
+  ) {
     final deviceName = deviceData['name'] ?? 'Unknown Device';
     final files = List<dynamic>.from(deviceData['files'] ?? []);
-    
+
     // Display only first 5 files to avoid cluttering the UI
     final displayFiles = files.length > 5 ? files.sublist(0, 5) : files;
-    
+
     return Card(
       margin: EdgeInsets.symmetric(vertical: 8),
       child: Column(
@@ -1284,7 +1485,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
               itemBuilder: (context, index) {
                 final file = displayFiles[index];
                 final isDir = file['isDirectory'] ?? false;
-                
+
                 return ListTile(
                   dense: true,
                   leading: Icon(
@@ -1293,17 +1494,25 @@ class _FileManagerPageState extends State<FileManagerPage> {
                     color: isDir ? Colors.amber : Colors.blue,
                   ),
                   title: Text(file['name'], overflow: TextOverflow.ellipsis),
-                  subtitle: isDir 
-                    ? Text('Directory') 
-                    : Text('${_formatFileSize(file['size'] ?? 0)}'),
+                  subtitle:
+                      isDir
+                          ? Text('Directory')
+                          : Text('${_formatFileSize(file['size'] ?? 0)}'),
                   trailing: ElevatedButton.icon(
-                    icon: Icon(isDir ? Icons.folder_open : Icons.download, size: 16),
-                    label: Text(isDir ? 'Open' : 'Get', style: TextStyle(fontSize: 12)),
+                    icon: Icon(
+                      isDir ? Icons.folder_open : Icons.download,
+                      size: 16,
+                    ),
+                    label: Text(
+                      isDir ? 'Open' : 'Get',
+                      style: TextStyle(fontSize: 12),
+                    ),
                     style: ElevatedButton.styleFrom(
                       padding: EdgeInsets.symmetric(horizontal: 8, vertical: 0),
                       minimumSize: Size(0, 0),
                     ),
-                    onPressed: () => _handleFileAction(deviceId, deviceName, file),
+                    onPressed:
+                        () => _handleFileAction(deviceId, deviceName, file),
                   ),
                 );
               },
@@ -1312,8 +1521,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
             Padding(
               padding: const EdgeInsets.all(8.0),
               child: Center(
-                child: Text('+ ${files.length - 5} more files', 
-                  style: TextStyle(color: Colors.grey)),
+                child: Text(
+                  '+ ${files.length - 5} more files',
+                  style: TextStyle(color: Colors.grey),
+                ),
               ),
             ),
         ],
@@ -1322,76 +1533,91 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   // Helper methods
-  void _viewAllDeviceFiles(String deviceId, String deviceName, List<dynamic> files) {
+  void _viewAllDeviceFiles(
+    String deviceId,
+    String deviceName,
+    List<dynamic> files,
+  ) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => RemoteFilesScreen(
-          deviceId: deviceId,
-          deviceName: deviceName,
-          initialFiles: List<Map<String, dynamic>>.from(
-            files.map((file) => Map<String, dynamic>.from(file))
-          ),
-          initialPath: '',
-        ),
+        builder:
+            (context) => RemoteFilesScreen(
+              deviceId: deviceId,
+              deviceName: deviceName,
+              initialFiles: List<Map<String, dynamic>>.from(
+                files.map((file) => Map<String, dynamic>.from(file)),
+              ),
+              initialPath: '',
+            ),
       ),
     );
   }
 
-  void _handleFileAction(String deviceId, String deviceName, Map<String, dynamic> file) {
+  void _handleFileAction(
+    String deviceId,
+    String deviceName,
+    Map<String, dynamic> file,
+  ) {
     final isDir = file['isDirectory'] ?? false;
-    
+
     if (isDir) {
       // Navigate to directory
-      final connectionService = Provider.of<ConnectionService>(context, listen: false);
+      final connectionService = Provider.of<ConnectionService>(
+        context,
+        listen: false,
+      );
       connectionService.requestRemoteFileList(deviceId, file['path']);
-      
+
       // Show loading indicator
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: Text('Loading'),
-          content: Row(
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(width: 16),
-              Expanded(child: Text('Opening ${file['name']}...')),
-            ],
-          ),
-        ),
+        builder:
+            (context) => AlertDialog(
+              title: Text('Loading'),
+              content: Row(
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(width: 16),
+                  Expanded(child: Text('Opening ${file['name']}...')),
+                ],
+              ),
+            ),
       );
-      
+
       // First declare the variable
       StreamSubscription? subscription;
-      
+
       // Then assign it separately
       subscription = connectionService.broadcastStream?.listen((message) {
         if (message is String) {
           try {
             final data = jsonDecode(message);
-            if (data['type'] == 'file_list_response' && 
+            if (data['type'] == 'file_list_response' &&
                 data['requesterId'] == connectionService.deviceId &&
                 data['sourceId'] == deviceId) {
-              
               // Cancel subscription
               subscription?.cancel();
-              
+
               // Close loading dialog
               Navigator.of(context, rootNavigator: true).pop();
-              
+
               // Navigate
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => RemoteFilesScreen(
-                    deviceId: deviceId,
-                    deviceName: deviceName,
-                    initialFiles: List<Map<String, dynamic>>.from(
-                      data['files'].map((file) => Map<String, dynamic>.from(file))
-                    ),
-                    initialPath: file['path'],
-                  ),
+                  builder:
+                      (context) => RemoteFilesScreen(
+                        deviceId: deviceId,
+                        deviceName: deviceName,
+                        initialFiles: List<Map<String, dynamic>>.from(
+                          data['files'].map(
+                            (file) => Map<String, dynamic>.from(file),
+                          ),
+                        ),
+                        initialPath: file['path'],
+                      ),
                 ),
               );
             }
@@ -1400,62 +1626,54 @@ class _FileManagerPageState extends State<FileManagerPage> {
           }
         }
       });
-      
+
       // Set timeout
       Future.delayed(Duration(seconds: 5), () {
         subscription?.cancel();
         if (Navigator.of(context, rootNavigator: true).canPop()) {
           Navigator.of(context, rootNavigator: true).pop();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Request timed out'))
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Request timed out')));
         }
       });
-      
     } else {
       // Download file
-      final connectionService = Provider.of<ConnectionService>(context, listen: false);
-      connectionService.requestRemoteFile(deviceId, file['path']);
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Downloading ${file['name']}...'))
+      final connectionService = Provider.of<ConnectionService>(
+        context,
+        listen: false,
       );
+      connectionService.requestRemoteFile(deviceId, file['path']);
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Downloading ${file['name']}...')));
     }
   }
-
-  // String _formatFileSize(int bytes) {
-  //   if (bytes < 1024) return '$bytes B';
-  //   if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-  //   if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-  //   return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-  // }
-
-//   IconData _getFileIcon(String path) {
-//     final ext = path.split('.').last.toLowerCase();
-
-//     if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(ext)) {
-//       return Icons.image;
-//     } else if (['mp4', 'avi', 'mov', 'wmv', 'flv', 'mkv'].contains(ext)) {
-//       return Icons.video_file;
-//     } else if (['mp3', 'wav', 'ogg', 'flac', 'm4a'].contains(ext)) {
-//       return Icons.audio_file;
-//     } else if (['pdf'].contains(ext)) {
-//       return Icons.picture_as_pdf;
-//     } else if (['doc', 'docx', 'txt', 'rtf'].contains(ext)) {
-//       return Icons.description;
-//     } else if (['xls', 'xlsx', 'csv'].contains(ext)) {
-//       return Icons.table_chart;
-//     } else if (['ppt', 'pptx'].contains(ext)) {
-//       return Icons.slideshow;
-//     } else if (['zip', 'rar', '7z', 'tar', 'gz'].contains(ext)) {
-//       return Icons.folder_zip;
-//     } else {
-//       return Icons.insert_drive_file;
-//     }
-//   }
-// }
 }
 
+// Keep these event classes in your file
+class FileAccessRequestEvent {
+  final String requesterId;
+  final String requesterName;
+
+  FileAccessRequestEvent({
+    required this.requesterId,
+    required this.requesterName,
+  });
+}
+
+class FileAccessGrantedEvent {
+  final String deviceId;
+
+  FileAccessGrantedEvent({required this.deviceId});
+}
+
+class FileAccessDeniedEvent {
+  final String deviceId;
+
+  FileAccessDeniedEvent({required this.deviceId});
+}
 
 class PhotosScreen extends StatelessWidget {
   const PhotosScreen({super.key});
@@ -1901,6 +2119,42 @@ class _StorageFilesScreenState extends State<StorageFilesScreen> {
 
   // Reuse the _getFileIcon and _formatFileSize methods from _FileManagerPageState
 
+  // Function to get file icon based on extension
+  IconData _getFileIcon(String path) {
+    final ext = path.split('.').last.toLowerCase();
+
+    if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(ext)) {
+      return Icons.image;
+    } else if (['mp4', 'avi', 'mov', 'wmv', 'flv', 'mkv'].contains(ext)) {
+      return Icons.video_file;
+    } else if (['mp3', 'wav', 'ogg', 'flac', 'm4a'].contains(ext)) {
+      return Icons.audio_file;
+    } else if (['pdf'].contains(ext)) {
+      return Icons.picture_as_pdf;
+    } else if (['doc', 'docx', 'txt', 'rtf'].contains(ext)) {
+      return Icons.description;
+    } else if (['xls', 'xlsx', 'csv'].contains(ext)) {
+      return Icons.table_chart;
+    } else if (['ppt', 'pptx'].contains(ext)) {
+      return Icons.slideshow;
+    } else if (['zip', 'rar', '7z', 'tar', 'gz'].contains(ext)) {
+      return Icons.folder_zip;
+    } else {
+      return Icons.insert_drive_file;
+    }
+  }
+
+  // Function to format file size
+  String _formatFileSize(num bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(2)} KB';
+    if (bytes < 1024 * 1024 * 1024)
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
+    if (bytes < 1024 * 1024 * 1024 * 1024)
+      return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+    return '${(bytes / (1024 * 1024 * 1024 * 1024)).toStringAsFixed(2)} TB';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1942,97 +2196,90 @@ class _StorageFilesScreenState extends State<StorageFilesScreen> {
                       itemCount: _files.length,
                       separatorBuilder: (context, index) => Divider(height: 1),
                       itemBuilder: (context, index) {
-                        // Implement the same file item UI as in the dashboard
-                        // but with full functionality
+                        final file = _files[index];
+                        final fileName =
+                            file.path.split(Platform.pathSeparator).last;
+                        final isDirectory = file is Directory;
+
+                        return ListTile(
+                          leading: Icon(
+                            isDirectory
+                                ? Icons.folder
+                                : _getFileIcon(file.path),
+                            color: isDirectory ? Colors.amber : Colors.blue,
+                          ),
+                          title: Text(
+                            fileName,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: FutureBuilder<FileStat>(
+                            future: file.stat(),
+                            builder: (context, snapshot) {
+                              if (!snapshot.hasData) {
+                                return Text('Loading...');
+                              }
+
+                              final modified = DateFormat(
+                                'MMM d, yyyy',
+                              ).format(snapshot.data!.modified);
+
+                              final size =
+                                  isDirectory
+                                      ? 'Directory'
+                                      : _formatFileSize(snapshot.data!.size);
+
+                              return Text('$modified • $size');
+                            },
+                          ),
+                          trailing:
+                              isDirectory
+                                  ? null
+                                  : IconButton(
+                                    icon: Icon(Icons.open_in_new),
+                                    onPressed: () async {
+                                      try {
+                                        await OpenFile.open(file.path);
+                                      } catch (e) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'Error opening file: $e',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    tooltip: 'Open',
+                                  ),
+                          onTap:
+                              isDirectory
+                                  ? () async {
+                                    // Navigate into the directory
+                                    _loadFiles(file.path);
+                                  }
+                                  : () async {
+                                    try {
+                                      await OpenFile.open(file.path);
+                                    } catch (e) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Error opening file: $e',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  },
+                        );
                       },
                     ),
           ),
         ],
       ),
     );
-  }
-}
-
-// Add to an events.dart file or at the top of connection_service.dart
-class FileAccessRequestEvent {
-  final String requesterId;
-  final String requesterName;
-  
-  FileAccessRequestEvent({required this.requesterId, required this.requesterName});
-}
-
-class FileAccessGrantedEvent {
-  final String deviceId;
-  
-  FileAccessGrantedEvent({required this.deviceId});
-}
-
-class FileAccessDeniedEvent {
-  final String deviceId;
-  
-  FileAccessDeniedEvent({required this.deviceId});
-}
-
-// Add this to your ConnectionService class
-Map<String, Map<String, dynamic>> _deviceFiles = {}; // Store device file listings
-Map<String, Map<String, dynamic>> get deviceFiles => _deviceFiles;
-
-// Add to _setupListeners() in ConnectionService
-if (data['type'] == 'request_initial_file_list') {
-  _sendInitialFileList();
-}
-
-if (data['type'] == 'device_files_update') {
-  final deviceId = data['deviceId'];
-  final deviceName = data['deviceName'];
-  final files = data['files'];
-  
-  // Store the files listing
-  _storeDeviceFiles(deviceId, deviceName, files);
-  
-  // Notify listeners
-  notifyListeners();
-}
-
-// New helper methods
-void _storeDeviceFiles(String deviceId, String deviceName, List<dynamic> files) {
-  _deviceFiles[deviceId] = {
-    'name': deviceName,
-    'files': files,
-  };
-}
-
-Future<void> _sendInitialFileList() async {
-  try {
-    final storagePath = await StorageManager.getDefaultStoragePath();
-    final directory = Directory(storagePath);
-    List<Map<String, dynamic>> files = [];
-    
-    if (await directory.exists()) {
-      final entities = await directory.list().toList();
-      
-      for (var entity in entities) {
-        final stat = await entity.stat();
-        final name = path.basename(entity.path);
-        final isDir = entity is Directory;
-        
-        files.add({
-          'name': name,
-          'path': name,
-          'isDirectory': isDir,
-          'size': isDir ? 0 : stat.size,
-          'modified': stat.modified.toIso8601String(),
-        });
-      }
-    }
-    
-    if (_channel != null) {
-      _channel!.sink.add(jsonEncode({
-        "type": "initial_file_list_response",
-        "files": files,
-      }));
-    }
-  } catch (e) {
-    print('Error sending initial file list: $e');
   }
 }

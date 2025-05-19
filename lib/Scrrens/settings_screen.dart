@@ -91,6 +91,75 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Widget _buildStorageLimitSetting() {
+    return FutureBuilder<int>(
+      future: StorageManager.getMaxStorageSize(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return CircularProgressIndicator();
+        }
+
+        // Convert bytes to GB for display
+        final currentLimitGB = snapshot.data! / (1024 * 1024 * 1024);
+
+        return ListTile(
+          title: Text('Maximum Storage Size'),
+          subtitle: Text('${currentLimitGB.toStringAsFixed(1)} GB'),
+          trailing: IconButton(
+            icon: Icon(Icons.edit),
+            onPressed: () => _showStorageLimitDialog(currentLimitGB),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showStorageLimitDialog(double currentLimitGB) {
+    final limitController = TextEditingController(
+        text: currentLimitGB.toStringAsFixed(1));
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Set Storage Limit'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Enter maximum storage size in GB:'),
+            TextField(
+              controller: limitController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                suffix: Text('GB'),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            child: Text('Cancel'),
+            onPressed: () => Navigator.pop(context),
+          ),
+          ElevatedButton(
+            child: Text('Save'),
+            onPressed: () async {
+              try {
+                final limitGB = double.parse(limitController.text);
+                final limitBytes = (limitGB * 1024 * 1024 * 1024).toInt();
+                await StorageManager.saveMaxStorageSize(limitBytes);
+                Navigator.pop(context);
+                setState(() {}); // Refresh the UI
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Invalid number format')));
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -99,110 +168,112 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _isLoading
               ? Center(child: CircularProgressIndicator())
               : ListView(
-                padding: EdgeInsets.all(16),
-                children: [
-                  Card(
-                    color: Theme.of(context).colorScheme.primary,
-                    child: Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Storage Settings',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          SizedBox(height: 16),
-                          Text('Default storage location:'),
-                          SizedBox(height: 8),
-                          Container(
-                            padding: EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.background,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            width: double.infinity,
-                            child: Text(
-                              _currentStoragePath ?? 'Not set',
-                              style: TextStyle(fontFamily: 'monospace'),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              ElevatedButton.icon(
-                                icon: Icon(Icons.folder),
-                                label: Text('Change Location'),
-                                onPressed: _selectStorageLocation,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Color(0xFF50C2C9),
-                                ),
+                  padding: EdgeInsets.all(16),
+                  children: [
+                    Card(
+                      color: Theme.of(context).colorScheme.primary,
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Storage Settings',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
                               ),
-                              TextButton.icon(
-                                icon: Icon(Icons.restore),
-                                label: Text('Reset to Default'),
-                                onPressed: _resetToDefault,
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: 16),
-                  Card(
-                    color: Theme.of(context).colorScheme.primary,
-                    child: Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Storage Information',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
                             ),
-                          ),
-                          SizedBox(height: 16),
-                          FutureBuilder<Directory>(
-                            future: StorageManager.ensureDefaultStorageExists(),
-                            builder: (context, snapshot) {
-                              if (snapshot.connectionState ==
-                                  ConnectionState.waiting) {
-                                return Center(
-                                  child: CircularProgressIndicator(),
-                                );
-                              }
-
-                              if (snapshot.hasError || !snapshot.hasData) {
-                                return Text('Error checking storage');
-                              }
-
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _buildInfoRow('Status', 'Ready to use'),
-                                  _buildInfoRow('Path exists', 'Yes'),
-                                  _buildInfoRow(
-                                    'Used for',
-                                    'Received files, Downloads',
+                            SizedBox(height: 16),
+                            Text('Default storage location:'),
+                            SizedBox(height: 8),
+                            Container(
+                              padding: EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.background,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              width: double.infinity,
+                              child: Text(
+                                _currentStoragePath ?? 'Not set',
+                                style: TextStyle(fontFamily: 'monospace'),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            SizedBox(height: 16),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                ElevatedButton.icon(
+                                  icon: Icon(Icons.folder),
+                                  label: Text('Change Location'),
+                                  onPressed: _selectStorageLocation,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Color(0xFF50C2C9),
                                   ),
-                                ],
-                              );
-                            },
-                          ),
-                        ],
+                                ),
+                                TextButton.icon(
+                                  icon: Icon(Icons.restore),
+                                  label: Text('Reset to Default'),
+                                  onPressed: _resetToDefault,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
+                    SizedBox(height: 16),
+                    Card(
+                      color: Theme.of(context).colorScheme.primary,
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Storage Information',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            SizedBox(height: 16),
+                            FutureBuilder<Directory>(
+                              future: StorageManager.ensureDefaultStorageExists(),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState ==
+                                    ConnectionState.waiting) {
+                                  return Center(
+                                    child: CircularProgressIndicator(),
+                                  );
+                                }
+
+                                if (snapshot.hasError || !snapshot.hasData) {
+                                  return Text('Error checking storage');
+                                }
+
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _buildInfoRow('Status', 'Ready to use'),
+                                    _buildInfoRow('Path exists', 'Yes'),
+                                    _buildInfoRow(
+                                      'Used for',
+                                      'Received files, Downloads',
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 16),
+                    _buildStorageLimitSetting(),
+                  ],
+                ),
     );
   }
 

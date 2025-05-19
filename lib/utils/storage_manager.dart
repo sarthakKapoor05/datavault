@@ -65,4 +65,16 @@ class StorageManager {
     final file = File('$dirPath/$filename');
     return file.writeAsBytes(bytes);
   }
+
+  // Add these methods to your StorageManager class
+  static Future<void> saveMaxStorageSize(int sizeInBytes) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('max_storage_size', sizeInBytes);
+  }
+
+  static Future<int> getMaxStorageSize() async {
+    final prefs = await SharedPreferences.getInstance();
+    // Default to 1GB if not set
+    return prefs.getInt('max_storage_size') ?? 1024 * 1024 * 1024;
+  }
 }
