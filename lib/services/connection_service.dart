@@ -35,6 +35,14 @@ class ConnectionService with ChangeNotifier {
   // Store cached directory listings for quicker navigation
   final Map<String, Map<String, List<Map<String, dynamic>>>> _cachedDirectories = {};
 
+  // Add these properties to your ConnectionService class
+
+  // Track ongoing transfers
+  Map<String, Map<String, dynamic>> _activeTransfers = {};
+
+  // Public getter for active transfers
+  Map<String, Map<String, dynamic>> get activeTransfers => _activeTransfers;
+
   WebSocketChannel? get channel => _channel;
   Stream<dynamic>? get broadcastStream => _broadcastStream;
   bool get isConnected => _isConnected;
@@ -165,12 +173,26 @@ class ConnectionService with ChangeNotifier {
             
             // Critical: Add file metadata handler
             else if (data['type'] == 'file_metadata') {
-              print('Received file metadata: ${data['filename']}, size: ${data['size']}');
+              print('Received file metadata: ${data['filename']}, size: ${data['size']} bytes from ${data['fromId']}');
               
               // Store or update expected file details
-              if (_expectedFile != null && _expectedFile!['fromId'] == data['fromId']) {
-                _expectedFile!['size'] = data['size'];
-                _expectedFile!['filename'] = data['filename'];
+              if (_expectedFile != null) {
+                // Check if this is the file we're expecting
+                if (_expectedFile!['fromId'] == data['fromId'] || 
+                    path.basename(_expectedFile!['filename'] as String) == path.basename(data['filename'])) {
+                  
+                  _expectedFile!['size'] = data['size'];
+                  _expectedFile!['fromId'] = data['fromId']; // Ensure fromId is set correctly
+                  
+                  // Store the actual filename from the metadata in case the paths differ
+                  _expectedFile!['metadata_filename'] = data['filename'];
+                  
+                  print('Updated expected file metadata - ready to receive file contents');
+                } else {
+                  print('Received metadata for unexpected file: ${data['filename']}');
+                }
+              } else {
+                print('Received file metadata but no file was requested');
               }
             }
           } 
@@ -427,13 +449,24 @@ class ConnectionService with ChangeNotifier {
         'requestTime': DateTime.now().millisecondsSinceEpoch,
       };
       
-      // Send the request with correct format
+      // Add to active transfers
+      _activeTransfers[filePath] = {
+        'deviceId': deviceId,
+        'fileName': path.basename(filePath),
+        'progress': 0.0,
+        'status': 'requesting',
+        'startTime': DateTime.now(),
+      };
+      
+      // Send the request - make sure we're sending what the server expects
       _channel!.sink.add(jsonEncode({
         "type": "request_file",
         "targetId": deviceId,
-        "filename": filePath,
+        "filename": filePath,  // Send the full path as filename
         "requesterId": _deviceId,
       }));
+      
+      print('File request sent for: $filePath from device $deviceId');
       
       // Set a timeout
       Future.delayed(Duration(seconds: 60), () {
@@ -463,19 +496,19 @@ class ConnectionService with ChangeNotifier {
 
   // Add this helper method to handle incoming file data
   Future<void> _handleIncomingFile(List<int> fileData) async {
+    if (_expectedFile == null) {
+      print('⚠️ Received unexpected file data (${fileData.length} bytes)');
+      return;
+    }
+    
     try {
-      if (_expectedFile == null) {
-        print('Received unexpected file data');
-        return;
-      }
+      print('📥 Received binary data: ${fileData.length} bytes');
       
       final senderId = _expectedFile!['fromId'] as String;
       final filePath = _expectedFile!['filename'] as String;
+      final fileName = path.basename(filePath);
       final onSuccess = _expectedFile!['onSuccess'] as Function(File)?;
       final onError = _expectedFile!['onError'] as Function(String)?;
-      
-      // Extract just the filename from the path
-      final fileName = path.basename(filePath);
       
       // Find client name
       String senderName = 'Unknown Device';
@@ -488,7 +521,7 @@ class ConnectionService with ChangeNotifier {
       
       // Use sender name for subfolder
       String safeSenderName = senderName.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
-      print('Saving file $fileName from $senderName (path: $filePath)');
+      print('💾 Saving file $fileName from $senderName (path: $filePath)');
       
       // Save file
       final file = await StorageManager.saveToDefaultStorage(
@@ -497,7 +530,21 @@ class ConnectionService with ChangeNotifier {
         subfolder: safeSenderName,
       );
       
-      print('File saved: ${file.path}');
+      print('✅ File saved: ${file.path} (${fileData.length} bytes)');
+      
+      // Update transfer status to 'completed'
+      if (_activeTransfers.containsKey(filePath)) {
+        _activeTransfers[filePath]!['progress'] = 1.0;
+        _activeTransfers[filePath]!['status'] = 'completed';
+        
+        // Remove from active transfers after a short delay
+        Future.delayed(Duration(seconds: 3), () {
+          _activeTransfers.remove(filePath);
+          notifyListeners();
+        });
+        
+        notifyListeners();
+      }
       
       // Call success callback if provided
       if (onSuccess != null) {
@@ -507,7 +554,7 @@ class ConnectionService with ChangeNotifier {
       // Reset
       _expectedFile = null;
     } catch (e) {
-      print('Error handling incoming file: $e');
+      print('❌ Error handling incoming file: $e');
       final onError = _expectedFile?['onError'] as Function(String)?;
       if (onError != null) {
         onError('Error saving file: $e');
@@ -623,6 +670,36 @@ class ConnectionService with ChangeNotifier {
       _cachedDirectories.remove(deviceId);
     } else if (_cachedDirectories.containsKey(deviceId)) {
       _cachedDirectories[deviceId]?.remove(path);
+    }
+  }
+
+  // Add this debugging method
+  void debugPrintExpectedFile() {
+    if (_expectedFile == null) {
+      print('DEBUG: No expected file');
+      return;
+    }
+    
+    print('DEBUG: Expected File Details:');
+    print('  - Filename: ${_expectedFile!['filename']}');
+    print('  - From Device: ${_expectedFile!['fromId']}');
+    print('  - Size: ${_expectedFile!['size'] ?? 'Unknown'}');
+    print('  - Request Time: ${DateTime.fromMillisecondsSinceEpoch(_expectedFile!['requestTime'] as int)}');
+    
+    // Check if any devices match the expected sender
+    for (var client in _connectedClients) {
+      if (client['id'] == _expectedFile!['fromId']) {
+        print('  - Sender Name: ${client['name']}');
+        break;
+      }
+    }
+  }
+
+  // Track transfer progress
+  void _updateTransferProgress(String filePath, double progress) {
+    if (_activeTransfers.containsKey(filePath)) {
+      _activeTransfers[filePath]!['progress'] = progress;
+      notifyListeners();
     }
   }
 
