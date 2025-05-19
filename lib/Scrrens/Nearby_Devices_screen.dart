@@ -106,7 +106,7 @@ class _ShareScreenState extends State<ShareScreen>
                 final deviceId = data['deviceId'];
                 final deviceName = data['deviceName'];
                 final files = data['files'];
-                
+
                 // Store the files for display
                 setState(() {
                   // Find the device in connected clients or add it
@@ -118,13 +118,13 @@ class _ShareScreenState extends State<ShareScreen>
                       break;
                     }
                   }
-                  
+
                   // If device wasn't in the list yet, this ensures we have its files
                   if (!found && deviceId != null && deviceName != null) {
                     _connectedClients.add({
                       'id': deviceId,
                       'name': deviceName,
-                      'files': files
+                      'files': files,
                     });
                   }
                 });
@@ -135,7 +135,7 @@ class _ShareScreenState extends State<ShareScreen>
                 final path = data['path'] ?? '';
                 final requesterId = data['requesterId'];
                 final recursive = data['recursive'] ?? false;
-                
+
                 if (requesterId != null) {
                   _handleDirectoryListingRequest(path, requesterId, recursive);
                 }
@@ -240,16 +240,19 @@ class _ShareScreenState extends State<ShareScreen>
           break;
         }
       }
-      
+
       // Use sanitized sender name as subfolder
-      String safeSenderName = senderName.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
-      
+      String safeSenderName = senderName.replaceAll(
+        RegExp(r'[<>:"/\\|?*]'),
+        '_',
+      );
+
       // Use the default storage location from StorageManager with sender name instead of ID
       final decryptedBytes = decryptFileBytes(fileData);
       final file = await StorageManager.saveToDefaultStorage(
         fileName,
         Uint8List.fromList(decryptedBytes),
-        subfolder: safeSenderName, // Use sender name instead of ID
+        // subfolder: safeSenderName, // Use sender name instead of ID
       );
 
       // Show success notification
@@ -589,92 +592,102 @@ class _ShareScreenState extends State<ShareScreen>
                       ),
                     ),
                     SizedBox(height: 16),
-                    ...List.generate(
-                      _connectedClients.length,
-                      (index) {
-                        final client = _connectedClients[index];
-                        
-                        // Skip our own device
-                        if (_deviceId != null && client['id'] == _deviceId) {
-                          return SizedBox.shrink();
-                        }
-                        
-                        // Get files from this client
-                        final deviceName = client['name'] ?? 'Unknown Device';
-                        final files = List<Map<String, dynamic>>.from(client['files'] ?? []);
-                        
-                        if (files.isEmpty) {
-                          return SizedBox.shrink();
-                        }
-                        
-                        return Card(
-                          margin: EdgeInsets.only(bottom: 16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.all(16.0),
-                                child: Text(
-                                  'Files from $deviceName',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
+                    ...List.generate(_connectedClients.length, (index) {
+                      final client = _connectedClients[index];
+
+                      // Skip our own device
+                      if (_deviceId != null && client['id'] == _deviceId) {
+                        return SizedBox.shrink();
+                      }
+
+                      // Get files from this client
+                      final deviceName = client['name'] ?? 'Unknown Device';
+                      final files = List<Map<String, dynamic>>.from(
+                        client['files'] ?? [],
+                      );
+
+                      if (files.isEmpty) {
+                        return SizedBox.shrink();
+                      }
+
+                      return Card(
+                        margin: EdgeInsets.only(bottom: 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Text(
+                                'Files from $deviceName',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
                                 ),
                               ),
-                              Container(
-                                height: 200,
-                                child: ListView.builder(
-                                  padding: EdgeInsets.all(8),
-                                  itemCount: files.length > 5 ? 5 : files.length,
-                                  itemBuilder: (context, i) {
-                                    final file = files[i];
-                                    final isDir = file['isDirectory'] ?? false;
-                                    
-                                    return ListTile(
-                                      leading: Icon(
-                                        isDir ? Icons.folder : _getFileIcon(file['name']),
-                                        color: isDir ? Colors.amber : Colors.blue,
+                            ),
+                            Container(
+                              height: 200,
+                              child: ListView.builder(
+                                padding: EdgeInsets.all(8),
+                                itemCount: files.length > 5 ? 5 : files.length,
+                                itemBuilder: (context, i) {
+                                  final file = files[i];
+                                  final isDir = file['isDirectory'] ?? false;
+
+                                  return ListTile(
+                                    leading: Icon(
+                                      isDir
+                                          ? Icons.folder
+                                          : _getFileIcon(file['name']),
+                                      color: isDir ? Colors.amber : Colors.blue,
+                                    ),
+                                    title: Text(file['name']),
+                                    subtitle: Text(
+                                      isDir
+                                          ? 'Directory'
+                                          : '${_formatFileSize(file['size'] ?? 0)}',
+                                    ),
+                                    trailing: ElevatedButton(
+                                      child: Text(
+                                        isDir ? 'Browse' : 'Get File',
                                       ),
-                                      title: Text(file['name']),
-                                      subtitle: Text(
-                                        isDir ? 'Directory' : 
-                                             '${_formatFileSize(file['size'] ?? 0)}'
-                                      ),
-                                      trailing: ElevatedButton(
-                                        child: Text(isDir ? 'Browse' : 'Get File'),
-                                        onPressed: () {
-                                          if (isDir) {
-                                            // Navigate to the directory browser
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (context) => RemoteFilesScreen(
-                                                  deviceId: client['id'],
-                                                  deviceName: deviceName,
-                                                  initialFiles: isDir ? [] : [],  // We'll load the directory contents
-                                                  initialPath: file['path'],
-                                                ),
-                                              ),
-                                            );
-                                          } else {
-                                            // Download file
-                                            _requestFileFromDevice(
-                                              client['id'], 
-                                              file['path']
-                                            );
-                                          }
-                                        },
-                                      ),
-                                    );
-                                  },
-                                ),
+                                      onPressed: () {
+                                        if (isDir) {
+                                          // Navigate to the directory browser
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder:
+                                                  (
+                                                    context,
+                                                  ) => RemoteFilesScreen(
+                                                    deviceId: client['id'],
+                                                    deviceName: deviceName,
+                                                    initialFiles:
+                                                        isDir
+                                                            ? []
+                                                            : [], // We'll load the directory contents
+                                                    initialPath: file['path'],
+                                                  ),
+                                            ),
+                                          );
+                                        } else {
+                                          // Download file
+                                          _requestFileFromDevice(
+                                            client['id'],
+                                            file['path'],
+                                          );
+                                        }
+                                      },
+                                    ),
+                                  );
+                                },
                               ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
                   ],
                 ),
               ),
@@ -898,12 +911,13 @@ class _ShareScreenState extends State<ShareScreen>
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => RemoteFilesScreen(
-                    deviceId: device['id'],
-                    deviceName: device['name'] ?? 'Unknown Device',
-                    initialFiles: device['files'] ?? [],
-                    initialPath: '',
-                  ),
+                  builder:
+                      (context) => RemoteFilesScreen(
+                        deviceId: device['id'],
+                        deviceName: device['name'] ?? 'Unknown Device',
+                        initialFiles: device['files'] ?? [],
+                        initialPath: '',
+                      ),
                 ),
               );
             },
@@ -967,16 +981,16 @@ class _ShareScreenState extends State<ShareScreen>
       final storagePath = await StorageManager.getDefaultStoragePath();
       final directory = Directory(storagePath);
       List<Map<String, dynamic>> files = [];
-      
+
       if (await directory.exists()) {
         final entities = await directory.list().toList();
-        
+
         for (var entity in entities) {
           try {
             final stat = await entity.stat();
             final name = path.basename(entity.path);
             final isDir = entity is Directory;
-            
+
             files.add({
               'name': name,
               'path': name,
@@ -989,14 +1003,13 @@ class _ShareScreenState extends State<ShareScreen>
           }
         }
       }
-      
+
       // Send the file list to the server
       if (_channel != null) {
         print('Sending initial file list: ${files.length} items');
-        _channel!.sink.add(jsonEncode({
-          "type": "initial_file_list_response",
-          "files": files
-        }));
+        _channel!.sink.add(
+          jsonEncode({"type": "initial_file_list_response", "files": files}),
+        );
       }
     } catch (e) {
       print('Error sending initial file list: $e');
@@ -1030,7 +1043,8 @@ class _ShareScreenState extends State<ShareScreen>
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    if (bytes < 1024 * 1024 * 1024)
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 
@@ -1038,7 +1052,7 @@ class _ShareScreenState extends State<ShareScreen>
   void _requestFileFromDevice(String deviceId, String filePath) {
     // Get the filename from the path
     final fileName = path.basename(filePath);
-    
+
     // Get the file details from the list
     Map<String, dynamic>? fileDetails;
     for (final device in _connectedClients) {
@@ -1051,50 +1065,60 @@ class _ShareScreenState extends State<ShareScreen>
         }
       }
     }
-    
+
     if (fileDetails == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('File details not found'))
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('File details not found')));
       return;
     }
-    
+
     // Show file details dialog
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('File Details'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ListTile(
-              leading: Icon(_getFileIcon(fileName), color: Colors.blue),
-              title: Text(fileName, style: TextStyle(fontWeight: FontWeight.bold)),
-              contentPadding: EdgeInsets.zero,
+      builder:
+          (context) => AlertDialog(
+            title: Text('File Details'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ListTile(
+                  leading: Icon(_getFileIcon(fileName), color: Colors.blue),
+                  title: Text(
+                    fileName,
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  contentPadding: EdgeInsets.zero,
+                ),
+                Divider(),
+                _buildDetailRow(
+                  'Size',
+                  _formatFileSize(fileDetails!['size'] ?? 0),
+                ),
+                _buildDetailRow('Path', filePath),
+                if (fileDetails['modified'] != null)
+                  _buildDetailRow(
+                    'Modified',
+                    fileDetails['modified'].toString(),
+                  ),
+              ],
             ),
-            Divider(),
-            _buildDetailRow('Size', _formatFileSize(fileDetails!['size'] ?? 0)),
-            _buildDetailRow('Path', filePath),
-            if (fileDetails['modified'] != null)
-              _buildDetailRow('Modified', fileDetails['modified'].toString()),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  // Start the download
+                  _startDownload(deviceId, filePath, fileName);
+                },
+                child: Text('Download'),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // Start the download
-              _startDownload(deviceId, filePath, fileName);
-            },
-            child: Text('Download'),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1106,11 +1130,12 @@ class _ShareScreenState extends State<ShareScreen>
         children: [
           SizedBox(
             width: 80,
-            child: Text('$title:', style: TextStyle(fontWeight: FontWeight.w500)),
+            child: Text(
+              '$title:',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
           ),
-          Expanded(
-            child: Text(value, style: TextStyle(color: Colors.black87)),
-          ),
+          Expanded(child: Text(value, style: TextStyle(color: Colors.black87))),
         ],
       ),
     );
@@ -1118,138 +1143,152 @@ class _ShareScreenState extends State<ShareScreen>
 
   void _startDownload(String deviceId, String filePath, String fileName) {
     if (_channel != null) {
-      _channel!.sink.add(jsonEncode({
-        "type": "request_file",
-        "targetId": deviceId,
-        "filename": filePath
-      }));
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Requesting file $fileName...'))
+      _channel!.sink.add(
+        jsonEncode({
+          "type": "request_file",
+          "targetId": deviceId,
+          "filename": filePath,
+        }),
       );
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Requesting file $fileName...')));
     }
   }
 
   // Add this method to your _ShareScreenState class
 
-  Future<void> _handleDirectoryListingRequest(String requestedPath, String requesterId, bool recursive) async {
-  try {
-    final storagePath = await StorageManager.getDefaultStoragePath();
-    List<Map<String, dynamic>> files = [];
-    
-    // Sanitize requested path
-    final safePath = requestedPath.replaceAll('..', '').replaceAll('\\', '/');
-    
-    // Construct the full path to the requested directory
-    final fullPath = path.join(storagePath, safePath);
-    final directory = Directory(fullPath);
-    
-    if (await directory.exists()) {
-      // Recursive mode fetches all files and maintains proper paths
-      if (recursive) {
-        await _collectFilesRecursively(directory, files, storagePath, safePath);
-      } else {
-        // Regular mode just gets immediate files
-        final entities = await directory.list().toList();
-        
-        for (var entity in entities) {
-          try {
-            final stat = await entity.stat();
-            final name = path.basename(entity.path);
-            final isDir = entity is Directory;
-            
-            files.add({
-              'name': name,
-              'path': safePath.isEmpty ? name : '$safePath/$name',
-              'isDirectory': isDir,
-              'size': isDir ? 0 : stat.size,
-              'modified': stat.modified.toIso8601String(),
-            });
-          } catch (e) {
-            print('Error processing file $entity: $e');
+  Future<void> _handleDirectoryListingRequest(
+    String requestedPath,
+    String requesterId,
+    bool recursive,
+  ) async {
+    try {
+      final storagePath = await StorageManager.getDefaultStoragePath();
+      List<Map<String, dynamic>> files = [];
+
+      // Sanitize requested path
+      final safePath = requestedPath.replaceAll('..', '').replaceAll('\\', '/');
+
+      // Construct the full path to the requested directory
+      final fullPath = path.join(storagePath, safePath);
+      final directory = Directory(fullPath);
+
+      if (await directory.exists()) {
+        // Recursive mode fetches all files and maintains proper paths
+        if (recursive) {
+          await _collectFilesRecursively(
+            directory,
+            files,
+            storagePath,
+            safePath,
+          );
+        } else {
+          // Regular mode just gets immediate files
+          final entities = await directory.list().toList();
+
+          for (var entity in entities) {
+            try {
+              final stat = await entity.stat();
+              final name = path.basename(entity.path);
+              final isDir = entity is Directory;
+
+              files.add({
+                'name': name,
+                'path': safePath.isEmpty ? name : '$safePath/$name',
+                'isDirectory': isDir,
+                'size': isDir ? 0 : stat.size,
+                'modified': stat.modified.toIso8601String(),
+              });
+            } catch (e) {
+              print('Error processing file $entity: $e');
+            }
           }
         }
-      }
-      
-      // Sort files: directories first, then alphabetically
-      files.sort((a, b) {
-        if (a['isDirectory'] == true && b['isDirectory'] != true) return -1;
-        if (a['isDirectory'] != true && b['isDirectory'] == true) return 1;
-        return (a['name'] as String).compareTo(b['name'] as String);
-      });
-    }
-    
-    // Send response back to server
-    if (_channel != null) {
-      _channel!.sink.add(jsonEncode({
-        "type": "file_list_response",
-        "path": safePath,
-        "files": files,
-        "requesterId": requesterId,
-      }));
-    }
-  } catch (e) {
-    print('Error handling directory listing request: $e');
-    if (_channel != null) {
-      _channel!.sink.add(jsonEncode({
-        "type": "file_list_response",
-        "path": requestedPath,
-        "files": [],
-        "error": e.toString(),
-        "requesterId": requesterId,
-      }));
-    }
-  }
-}
 
-// Helper method to collect files recursively
-Future<void> _collectFilesRecursively(
-  Directory directory, 
-  List<Map<String, dynamic>> files,
-  String basePath,
-  String currentRelativePath
-) async {
-  if (!await directory.exists()) return;
-  
-  try {
-    final entities = await directory.list().toList();
-    
-    for (var entity in entities) {
-      try {
-        final stat = await entity.stat();
-        final name = path.basename(entity.path);
-        final isDir = entity is Directory;
-        final relativePath = currentRelativePath.isEmpty 
-            ? name 
-            : '$currentRelativePath/$name';
-            
-        files.add({
-          'name': name,
-          'path': relativePath,
-          'fullPath': entity.path,
-          'isDirectory': isDir,
-          'size': isDir ? 0 : stat.size,
-          'modified': stat.modified.toIso8601String(),
-          'parentPath': currentRelativePath,
+        // Sort files: directories first, then alphabetically
+        files.sort((a, b) {
+          if (a['isDirectory'] == true && b['isDirectory'] != true) return -1;
+          if (a['isDirectory'] != true && b['isDirectory'] == true) return 1;
+          return (a['name'] as String).compareTo(b['name'] as String);
         });
-        
-        // Recursively process subdirectories
-        if (isDir) {
-          await _collectFilesRecursively(
-            Directory(entity.path),
-            files,
-            basePath,
-            relativePath,
-          );
-        }
-      } catch (e) {
-        print('Error processing file $entity during recursive scan: $e');
+      }
+
+      // Send response back to server
+      if (_channel != null) {
+        _channel!.sink.add(
+          jsonEncode({
+            "type": "file_list_response",
+            "path": safePath,
+            "files": files,
+            "requesterId": requesterId,
+          }),
+        );
+      }
+    } catch (e) {
+      print('Error handling directory listing request: $e');
+      if (_channel != null) {
+        _channel!.sink.add(
+          jsonEncode({
+            "type": "file_list_response",
+            "path": requestedPath,
+            "files": [],
+            "error": e.toString(),
+            "requesterId": requesterId,
+          }),
+        );
       }
     }
-  } catch (e) {
-    print('Error listing directory $directory: $e');
   }
-}
+
+  // Helper method to collect files recursively
+  Future<void> _collectFilesRecursively(
+    Directory directory,
+    List<Map<String, dynamic>> files,
+    String basePath,
+    String currentRelativePath,
+  ) async {
+    if (!await directory.exists()) return;
+
+    try {
+      final entities = await directory.list().toList();
+
+      for (var entity in entities) {
+        try {
+          final stat = await entity.stat();
+          final name = path.basename(entity.path);
+          final isDir = entity is Directory;
+          final relativePath =
+              currentRelativePath.isEmpty ? name : '$currentRelativePath/$name';
+
+          files.add({
+            'name': name,
+            'path': relativePath,
+            'fullPath': entity.path,
+            'isDirectory': isDir,
+            'size': isDir ? 0 : stat.size,
+            'modified': stat.modified.toIso8601String(),
+            'parentPath': currentRelativePath,
+          });
+
+          // Recursively process subdirectories
+          if (isDir) {
+            await _collectFilesRecursively(
+              Directory(entity.path),
+              files,
+              basePath,
+              relativePath,
+            );
+          }
+        } catch (e) {
+          print('Error processing file $entity during recursive scan: $e');
+        }
+      }
+    } catch (e) {
+      print('Error listing directory $directory: $e');
+    }
+  }
 }
 
 // Use a secure key in production!
