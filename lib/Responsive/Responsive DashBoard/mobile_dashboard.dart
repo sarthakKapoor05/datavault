@@ -803,7 +803,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
                           label: Text('Connect'),
                           onPressed: () async {
                             try {
-                              await connectionService.connect('192.168.18.226');
+                              await connectionService.connect(
+                                '192.168.239.23239.23',
+                              );
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(content: Text('Connected to server')),
                               );
@@ -1241,7 +1243,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
                         label: Text('Connect'),
                         onPressed: () async {
                           try {
-                            await connectionService.connect('192.168.18.226');
+                            await connectionService.connect(
+                              '192.168.239.23239.23',
+                            );
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(content: Text('Connected to server')),
                             );
@@ -1328,7 +1332,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                             onPressed: () async {
                               try {
                                 await connectionService.connect(
-                                  '192.168.18.226',
+                                  '192.168.239.2318.226',
                                 );
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
