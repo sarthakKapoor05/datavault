@@ -43,7 +43,7 @@ class _ShareScreenState extends State<ShareScreen>
         context,
         listen: false,
       );
-      await connectionService.connect('239.23');
+      await connectionService.connect('192.168.239.23');
 
       setState(() {
         _isConnected = connectionService.isConnected;
