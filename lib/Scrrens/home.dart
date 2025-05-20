@@ -6,6 +6,7 @@ import 'package:datavault/Responsive/Responsive%20Setting/tablet_setting.dart';
 import 'package:datavault/Responsive/responsive_layout.dart';
 import 'package:datavault/Responsive/Responsive%20Setting/mobile_settings.dart';
 import 'package:datavault/Scrrens/Nearby_Devices_screen.dart';
+import 'package:datavault/Scrrens/settings_screen.dart';
 import 'package:flutter/material.dart';
 
 class Home extends StatefulWidget {
@@ -29,7 +30,7 @@ class _HomeState extends State<Home> {
     ResponsiveLayout(
       mobileScaffold: MobileSettings(),
       tabletScaffold: TabletSetting(),
-      desktopScaffold: DesktopSetting(),
+      desktopScaffold: SettingsScreen(),
     ),
   ];
 
